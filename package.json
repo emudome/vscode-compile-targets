@@ -1,0 +1,77 @@
+{
+  "name": "cmake-compile-explorer",
+  "displayName": "CMake Compile Explorer",
+  "description": "compile_commands.json に基づいてコンパイル対象ファイルをエクスプローラーに表示します",
+  "version": "0.1.0",
+  "publisher": "local",
+  "engines": {
+    "vscode": "^1.80.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./out/extension.js",
+  "contributes": {
+    "configuration": {
+      "title": "CMake Compile Explorer",
+      "properties": {
+        "cmakeCompileExplorer.compileCommandsDir": {
+          "type": "string",
+          "default": "build",
+          "description": "compile_commands.json が存在するディレクトリ（ワークスペースルートからの相対パス、または絶対パス）"
+        },
+        "cmakeCompileExplorer.showHeaders": {
+          "type": "boolean",
+          "default": true,
+          "description": "コンパイルコマンドの -I パスからヘッダーファイルを収集して表示する"
+        },
+        "cmakeCompileExplorer.headerExtensions": {
+          "type": "array",
+          "default": [".h", ".hpp", ".hxx", ".hh"],
+          "items": { "type": "string" },
+          "description": "ヘッダーファイルとして認識する拡張子のリスト"
+        }
+      }
+    },
+    "views": {
+      "explorer": [
+        {
+          "id": "cmakeCompileExplorer",
+          "name": "Compile Targets"
+        }
+      ]
+    },
+    "commands": [
+      {
+        "command": "cmakeCompileExplorer.refresh",
+        "title": "Refresh",
+        "icon": "$(refresh)",
+        "category": "CMake Compile Explorer"
+      },
+      {
+        "command": "cmakeCompileExplorer.openFile",
+        "title": "Open File"
+      }
+    ],
+    "menus": {
+      "view/title": [
+        {
+          "command": "cmakeCompileExplorer.refresh",
+          "when": "view == cmakeCompileExplorer",
+          "group": "navigation"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "vscode:prepublish": "npm run compile",
+    "compile": "tsc -p ./",
+    "watch": "tsc -watch -p ./"
+  },
+  "devDependencies": {
+    "@types/node": "^25.4.0",
+    "@types/vscode": "^1.110.0",
+    "typescript": "^5.9.3"
+  }
+}
