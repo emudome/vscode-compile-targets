@@ -126,7 +126,29 @@
           "group": "7_reveal@2"
         }
       ]
-    }
+    },
+    "keybindings": [
+      {
+        "command": "cmakeCompileExplorer.openToSide",
+        "key": "ctrl+enter",
+        "when": "focusedView == cmakeCompileExplorer && listFocus"
+      },
+      {
+        "command": "cmakeCompileExplorer.copyPath",
+        "key": "shift+alt+c",
+        "when": "focusedView == cmakeCompileExplorer && listFocus"
+      },
+      {
+        "command": "cmakeCompileExplorer.copyRelativePath",
+        "key": "ctrl+k ctrl+shift+c",
+        "when": "focusedView == cmakeCompileExplorer && listFocus"
+      },
+      {
+        "command": "cmakeCompileExplorer.revealInOS",
+        "key": "shift+alt+r",
+        "when": "focusedView == cmakeCompileExplorer && listFocus"
+      }
+    ]
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

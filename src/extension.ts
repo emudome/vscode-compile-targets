@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
-import { CompileTargetsProvider } from './compileTargetsProvider';
+import { CompileTargetsProvider, CompileTargetItem } from './compileTargetsProvider';
 
 export function activate(context: vscode.ExtensionContext): void {
     const provider = new CompileTargetsProvider();
@@ -11,6 +11,10 @@ export function activate(context: vscode.ExtensionContext): void {
     });
     context.subscriptions.push(treeView);
 
+    function getSelectedItem(item?: CompileTargetItem): CompileTargetItem | undefined {
+        return item ?? treeView.selection[0];
+    }
+
     context.subscriptions.push(
         vscode.commands.registerCommand('cmakeCompileExplorer.refresh', () => {
             void provider.refresh();
@@ -18,40 +22,52 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.openFile', (item: { filePath: string }) => {
-            vscode.window.showTextDocument(vscode.Uri.file(item.filePath), { preview: true });
+        vscode.commands.registerCommand('cmakeCompileExplorer.openFile', (item?: CompileTargetItem) => {
+            const selected = getSelectedItem(item);
+            if (!selected) { return; }
+            vscode.window.showTextDocument(vscode.Uri.file(selected.filePath), { preview: true });
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.openToSide', (item: { filePath: string }) => {
-            vscode.window.showTextDocument(vscode.Uri.file(item.filePath), { viewColumn: vscode.ViewColumn.Beside, preview: true });
+        vscode.commands.registerCommand('cmakeCompileExplorer.openToSide', (item?: CompileTargetItem) => {
+            const selected = getSelectedItem(item);
+            if (!selected) { return; }
+            vscode.window.showTextDocument(vscode.Uri.file(selected.filePath), { viewColumn: vscode.ViewColumn.Beside, preview: true });
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.copyPath', (item: { filePath: string }) => {
-            vscode.env.clipboard.writeText(item.filePath);
+        vscode.commands.registerCommand('cmakeCompileExplorer.copyPath', (item?: CompileTargetItem) => {
+            const selected = getSelectedItem(item);
+            if (!selected) { return; }
+            vscode.env.clipboard.writeText(selected.filePath);
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.copyRelativePath', (item: { filePath: string }) => {
+        vscode.commands.registerCommand('cmakeCompileExplorer.copyRelativePath', (item?: CompileTargetItem) => {
+            const selected = getSelectedItem(item);
+            if (!selected) { return; }
             const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-            const relativePath = workspaceRoot ? path.relative(workspaceRoot, item.filePath) : item.filePath;
+            const relativePath = workspaceRoot ? path.relative(workspaceRoot, selected.filePath) : selected.filePath;
             vscode.env.clipboard.writeText(relativePath);
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.revealInOS', (item: { filePath: string }) => {
-            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(item.filePath));
+        vscode.commands.registerCommand('cmakeCompileExplorer.revealInOS', (item?: CompileTargetItem) => {
+            const selected = getSelectedItem(item);
+            if (!selected) { return; }
+            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(selected.filePath));
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.openInTerminal', (item: { filePath: string }) => {
-            const dir = path.dirname(item.filePath);
+        vscode.commands.registerCommand('cmakeCompileExplorer.openInTerminal', (item?: CompileTargetItem) => {
+            const selected = getSelectedItem(item);
+            if (!selected) { return; }
+            const dir = path.dirname(selected.filePath);
             const terminal = vscode.window.createTerminal({ cwd: dir });
             terminal.show();
         })
