@@ -80,6 +80,22 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         this._onDidChangeTreeData.fire(undefined);
     }
 
+    /** ツリーに含まれるすべてのファイルパスを返す */
+    getAllFilePaths(): string[] {
+        const files: string[] = [];
+        const collect = (nodes: CompileTargetItem[]) => {
+            for (const node of nodes) {
+                if (node.isFile) {
+                    files.push(node.filePath);
+                } else if (node.children) {
+                    collect(Array.from(node.children.values()));
+                }
+            }
+        };
+        collect(this.rootNodes);
+        return files;
+    }
+
     getTreeItem(element: CompileTargetItem): vscode.TreeItem {
         return element;
     }

@@ -52,10 +52,21 @@
       {
         "command": "cmakeCompileExplorer.openFile",
         "title": "Open File"
+      },
+      {
+        "command": "cmakeCompileExplorer.searchInTargets",
+        "title": "Search in Compile Targets",
+        "icon": "$(search)",
+        "category": "CMake Compile Explorer"
       }
     ],
     "menus": {
       "view/title": [
+        {
+          "command": "cmakeCompileExplorer.searchInTargets",
+          "when": "view == cmakeCompileExplorer",
+          "group": "navigation"
+        },
         {
           "command": "cmakeCompileExplorer.refresh",
           "when": "view == cmakeCompileExplorer",
