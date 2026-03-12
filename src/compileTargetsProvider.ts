@@ -41,7 +41,6 @@ export class CompileTargetItem extends vscode.TreeItem {
             this.contextValue = 'file';
             this.iconPath = vscode.ThemeIcon.File;
         } else {
-            this.iconPath = vscode.ThemeIcon.Folder;
             this.contextValue = 'folder';
         }
     }
