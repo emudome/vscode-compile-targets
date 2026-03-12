@@ -18,8 +18,42 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.openFile', (uri: vscode.Uri) => {
-            vscode.window.showTextDocument(uri, { preview: true });
+        vscode.commands.registerCommand('cmakeCompileExplorer.openFile', (item: { filePath: string }) => {
+            vscode.window.showTextDocument(vscode.Uri.file(item.filePath), { preview: true });
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('cmakeCompileExplorer.openToSide', (item: { filePath: string }) => {
+            vscode.window.showTextDocument(vscode.Uri.file(item.filePath), { viewColumn: vscode.ViewColumn.Beside, preview: true });
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('cmakeCompileExplorer.copyPath', (item: { filePath: string }) => {
+            vscode.env.clipboard.writeText(item.filePath);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('cmakeCompileExplorer.copyRelativePath', (item: { filePath: string }) => {
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            const relativePath = workspaceRoot ? path.relative(workspaceRoot, item.filePath) : item.filePath;
+            vscode.env.clipboard.writeText(relativePath);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('cmakeCompileExplorer.revealInOS', (item: { filePath: string }) => {
+            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(item.filePath));
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('cmakeCompileExplorer.openInTerminal', (item: { filePath: string }) => {
+            const dir = path.dirname(item.filePath);
+            const terminal = vscode.window.createTerminal({ cwd: dir });
+            terminal.show();
         })
     );
 

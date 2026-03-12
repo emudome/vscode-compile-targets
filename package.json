@@ -58,6 +58,26 @@
         "title": "Search in Compile Targets",
         "icon": "$(search)",
         "category": "CMake Compile Explorer"
+      },
+      {
+        "command": "cmakeCompileExplorer.openToSide",
+        "title": "Open to the Side"
+      },
+      {
+        "command": "cmakeCompileExplorer.copyPath",
+        "title": "Copy Path"
+      },
+      {
+        "command": "cmakeCompileExplorer.copyRelativePath",
+        "title": "Copy Relative Path"
+      },
+      {
+        "command": "cmakeCompileExplorer.revealInOS",
+        "title": "Reveal in File Explorer"
+      },
+      {
+        "command": "cmakeCompileExplorer.openInTerminal",
+        "title": "Open in Integrated Terminal"
       }
     ],
     "menus": {
@@ -71,6 +91,38 @@
           "command": "cmakeCompileExplorer.refresh",
           "when": "view == cmakeCompileExplorer",
           "group": "navigation"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "cmakeCompileExplorer.openFile",
+          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "group": "navigation@1"
+        },
+        {
+          "command": "cmakeCompileExplorer.openToSide",
+          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "group": "navigation@2"
+        },
+        {
+          "command": "cmakeCompileExplorer.copyPath",
+          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "group": "6_copypath@1"
+        },
+        {
+          "command": "cmakeCompileExplorer.copyRelativePath",
+          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "group": "6_copypath@2"
+        },
+        {
+          "command": "cmakeCompileExplorer.revealInOS",
+          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "group": "7_reveal@1"
+        },
+        {
+          "command": "cmakeCompileExplorer.openInTerminal",
+          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "group": "7_reveal@2"
         }
       ]
     }
