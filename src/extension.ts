@@ -61,7 +61,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('cmakeCompileExplorer.searchInTargets', async () => {
             const files = provider.getAllFilePaths();
             if (files.length === 0) {
-                vscode.window.showWarningMessage('コンパイル対象ファイルがありません');
+                vscode.window.showWarningMessage(vscode.l10n.t('No compile target files found'));
                 return;
             }
             const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;

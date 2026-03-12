@@ -1,7 +1,7 @@
 {
   "name": "cmake-compile-explorer",
-  "displayName": "CMake Compile Explorer",
-  "description": "compile_commands.json に基づいてコンパイル対象ファイルをエクスプローラーに表示します",
+  "displayName": "%displayName%",
+  "description": "%description%",
   "version": "0.1.0",
   "publisher": "local",
   "engines": {
@@ -12,25 +12,26 @@
   ],
   "activationEvents": [],
   "main": "./out/extension.js",
+  "l10n": "./l10n",
   "contributes": {
     "configuration": {
-      "title": "CMake Compile Explorer",
+      "title": "%configuration.title%",
       "properties": {
         "cmakeCompileExplorer.compileCommandsDir": {
           "type": "string",
           "default": "build",
-          "description": "compile_commands.json が存在するディレクトリ（ワークスペースルートからの相対パス、または絶対パス）"
+          "description": "%config.compileCommandsDir.description%"
         },
         "cmakeCompileExplorer.showHeaders": {
           "type": "boolean",
           "default": true,
-          "description": "コンパイルコマンドの -I パスからヘッダーファイルを収集して表示する"
+          "description": "%config.showHeaders.description%"
         },
         "cmakeCompileExplorer.headerExtensions": {
           "type": "array",
           "default": [".h", ".hpp", ".hxx", ".hh"],
           "items": { "type": "string" },
-          "description": "ヘッダーファイルとして認識する拡張子のリスト"
+          "description": "%config.headerExtensions.description%"
         }
       }
     },
@@ -38,46 +39,46 @@
       "explorer": [
         {
           "id": "cmakeCompileExplorer",
-          "name": "Compile Targets"
+          "name": "%view.compileTargets.name%"
         }
       ]
     },
     "commands": [
       {
         "command": "cmakeCompileExplorer.refresh",
-        "title": "Refresh",
+        "title": "%command.refresh.title%",
         "icon": "$(refresh)",
-        "category": "CMake Compile Explorer"
+        "category": "%command.category%"
       },
       {
         "command": "cmakeCompileExplorer.openFile",
-        "title": "Open File"
+        "title": "%command.openFile.title%"
       },
       {
         "command": "cmakeCompileExplorer.searchInTargets",
-        "title": "Search in Compile Targets",
+        "title": "%command.searchInTargets.title%",
         "icon": "$(search)",
-        "category": "CMake Compile Explorer"
+        "category": "%command.category%"
       },
       {
         "command": "cmakeCompileExplorer.openToSide",
-        "title": "Open to the Side"
+        "title": "%command.openToSide.title%"
       },
       {
         "command": "cmakeCompileExplorer.copyPath",
-        "title": "Copy Path"
+        "title": "%command.copyPath.title%"
       },
       {
         "command": "cmakeCompileExplorer.copyRelativePath",
-        "title": "Copy Relative Path"
+        "title": "%command.copyRelativePath.title%"
       },
       {
         "command": "cmakeCompileExplorer.revealInOS",
-        "title": "Reveal in File Explorer"
+        "title": "%command.revealInOS.title%"
       },
       {
         "command": "cmakeCompileExplorer.openInTerminal",
-        "title": "Open in Integrated Terminal"
+        "title": "%command.openInTerminal.title%"
       }
     ],
     "menus": {

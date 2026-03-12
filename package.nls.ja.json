@@ -1,0 +1,18 @@
+{
+  "displayName": "CMake コンパイルエクスプローラー",
+  "description": "compile_commands.json に基づいてコンパイル対象ファイルをエクスプローラーに表示します",
+  "configuration.title": "CMake コンパイルエクスプローラー",
+  "config.compileCommandsDir.description": "compile_commands.json が存在するディレクトリ（ワークスペースルートからの相対パス、または絶対パス）",
+  "config.showHeaders.description": "コンパイルコマンドの -I パスからヘッダーファイルを収集して表示する",
+  "config.headerExtensions.description": "ヘッダーファイルとして認識する拡張子のリスト",
+  "view.compileTargets.name": "コンパイル対象",
+  "command.refresh.title": "更新",
+  "command.openFile.title": "ファイルを開く",
+  "command.searchInTargets.title": "コンパイル対象内を検索",
+  "command.openToSide.title": "横に並べて開く",
+  "command.copyPath.title": "パスのコピー",
+  "command.copyRelativePath.title": "相対パスのコピー",
+  "command.revealInOS.title": "エクスプローラーで表示",
+  "command.openInTerminal.title": "統合ターミナルで開く",
+  "command.category": "CMake コンパイルエクスプローラー"
+}

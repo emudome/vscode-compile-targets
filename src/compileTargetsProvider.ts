@@ -460,7 +460,7 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
 
         if (!(await this.fileExists(compileCommandsPath))) {
             vscode.window.showWarningMessage(
-                `compile_commands.json が見つかりません: ${compileCommandsPath}`
+                vscode.l10n.t('compile_commands.json not found: {0}', compileCommandsPath)
             );
             return undefined;
         }
@@ -470,7 +470,7 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             return JSON.parse(content) as CompileCommandEntry[];
         } catch (e) {
             vscode.window.showErrorMessage(
-                `compile_commands.json の読み込みに失敗しました: ${e}`
+                vscode.l10n.t('Failed to read compile_commands.json: {0}', String(e))
             );
             return undefined;
         }
