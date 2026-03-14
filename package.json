@@ -1,33 +1,34 @@
 {
-  "name": "cmake-compile-explorer",
+  "name": "compile-targets-explorer",
   "displayName": "%displayName%",
   "description": "%description%",
   "version": "0.1.0",
+  "license": "MIT",
   "publisher": "local",
   "engines": {
-    "vscode": "^1.80.0"
+    "vscode": "^1.110.0"
   },
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "workspaceContains:**/compile_commands.json",
+    "workspaceContains:.clangd",
+    "workspaceContains:CMakePresets.json",
+    "workspaceContains:CMakeLists.txt"
+  ],
   "main": "./out/extension.js",
   "l10n": "./l10n",
   "contributes": {
     "configuration": {
       "title": "%configuration.title%",
       "properties": {
-        "cmakeCompileExplorer.compileCommandsDir": {
-          "type": "string",
-          "default": "build",
-          "description": "%config.compileCommandsDir.description%"
-        },
-        "cmakeCompileExplorer.showHeaders": {
+        "compileTargetsExplorer.showHeaders": {
           "type": "boolean",
           "default": true,
           "description": "%config.showHeaders.description%"
         },
-        "cmakeCompileExplorer.headerExtensions": {
+        "compileTargetsExplorer.headerExtensions": {
           "type": "array",
           "default": [".h", ".hpp", ".hxx", ".hh"],
           "items": { "type": "string" },
@@ -38,115 +39,115 @@
     "views": {
       "explorer": [
         {
-          "id": "cmakeCompileExplorer",
+          "id": "compileTargetsExplorer",
           "name": "%view.compileTargets.name%"
         }
       ]
     },
     "commands": [
       {
-        "command": "cmakeCompileExplorer.refresh",
+        "command": "compileTargetsExplorer.refresh",
         "title": "%command.refresh.title%",
         "icon": "$(refresh)",
         "category": "%command.category%"
       },
       {
-        "command": "cmakeCompileExplorer.openFile",
+        "command": "compileTargetsExplorer.openFile",
         "title": "%command.openFile.title%"
       },
       {
-        "command": "cmakeCompileExplorer.searchInTargets",
+        "command": "compileTargetsExplorer.searchInTargets",
         "title": "%command.searchInTargets.title%",
         "icon": "$(search)",
         "category": "%command.category%"
       },
       {
-        "command": "cmakeCompileExplorer.openToSide",
+        "command": "compileTargetsExplorer.openToSide",
         "title": "%command.openToSide.title%"
       },
       {
-        "command": "cmakeCompileExplorer.copyPath",
+        "command": "compileTargetsExplorer.copyPath",
         "title": "%command.copyPath.title%"
       },
       {
-        "command": "cmakeCompileExplorer.copyRelativePath",
+        "command": "compileTargetsExplorer.copyRelativePath",
         "title": "%command.copyRelativePath.title%"
       },
       {
-        "command": "cmakeCompileExplorer.revealInOS",
+        "command": "compileTargetsExplorer.revealInOS",
         "title": "%command.revealInOS.title%"
       },
       {
-        "command": "cmakeCompileExplorer.openInTerminal",
+        "command": "compileTargetsExplorer.openInTerminal",
         "title": "%command.openInTerminal.title%"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "cmakeCompileExplorer.searchInTargets",
-          "when": "view == cmakeCompileExplorer",
+          "command": "compileTargetsExplorer.searchInTargets",
+          "when": "view == compileTargetsExplorer",
           "group": "navigation"
         },
         {
-          "command": "cmakeCompileExplorer.refresh",
-          "when": "view == cmakeCompileExplorer",
+          "command": "compileTargetsExplorer.refresh",
+          "when": "view == compileTargetsExplorer",
           "group": "navigation"
         }
       ],
       "view/item/context": [
         {
-          "command": "cmakeCompileExplorer.openFile",
-          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "command": "compileTargetsExplorer.openFile",
+          "when": "view == compileTargetsExplorer && viewItem == file",
           "group": "navigation@1"
         },
         {
-          "command": "cmakeCompileExplorer.openToSide",
-          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "command": "compileTargetsExplorer.openToSide",
+          "when": "view == compileTargetsExplorer && viewItem == file",
           "group": "navigation@2"
         },
         {
-          "command": "cmakeCompileExplorer.copyPath",
-          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "command": "compileTargetsExplorer.copyPath",
+          "when": "view == compileTargetsExplorer && viewItem == file",
           "group": "6_copypath@1"
         },
         {
-          "command": "cmakeCompileExplorer.copyRelativePath",
-          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "command": "compileTargetsExplorer.copyRelativePath",
+          "when": "view == compileTargetsExplorer && viewItem == file",
           "group": "6_copypath@2"
         },
         {
-          "command": "cmakeCompileExplorer.revealInOS",
-          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "command": "compileTargetsExplorer.revealInOS",
+          "when": "view == compileTargetsExplorer && viewItem == file",
           "group": "7_reveal@1"
         },
         {
-          "command": "cmakeCompileExplorer.openInTerminal",
-          "when": "view == cmakeCompileExplorer && viewItem == file",
+          "command": "compileTargetsExplorer.openInTerminal",
+          "when": "view == compileTargetsExplorer && viewItem == file",
           "group": "7_reveal@2"
         }
       ]
     },
     "keybindings": [
       {
-        "command": "cmakeCompileExplorer.openToSide",
+        "command": "compileTargetsExplorer.openToSide",
         "key": "ctrl+enter",
-        "when": "focusedView == cmakeCompileExplorer && listFocus"
+        "when": "focusedView == compileTargetsExplorer && listFocus"
       },
       {
-        "command": "cmakeCompileExplorer.copyPath",
+        "command": "compileTargetsExplorer.copyPath",
         "key": "shift+alt+c",
-        "when": "focusedView == cmakeCompileExplorer && listFocus"
+        "when": "focusedView == compileTargetsExplorer && listFocus"
       },
       {
-        "command": "cmakeCompileExplorer.copyRelativePath",
+        "command": "compileTargetsExplorer.copyRelativePath",
         "key": "ctrl+k ctrl+shift+c",
-        "when": "focusedView == cmakeCompileExplorer && listFocus"
+        "when": "focusedView == compileTargetsExplorer && listFocus"
       },
       {
-        "command": "cmakeCompileExplorer.revealInOS",
+        "command": "compileTargetsExplorer.revealInOS",
         "key": "shift+alt+r",
-        "when": "focusedView == cmakeCompileExplorer && listFocus"
+        "when": "focusedView == compileTargetsExplorer && listFocus"
       }
     ]
   },

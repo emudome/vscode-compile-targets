@@ -5,7 +5,7 @@ import { CompileTargetsProvider, CompileTargetItem } from './compileTargetsProvi
 export function activate(context: vscode.ExtensionContext): void {
     const provider = new CompileTargetsProvider(context.storageUri?.fsPath);
 
-    const treeView = vscode.window.createTreeView('cmakeCompileExplorer', {
+    const treeView = vscode.window.createTreeView('compileTargetsExplorer', {
         treeDataProvider: provider,
         showCollapseAll: true,
     });
@@ -16,13 +16,13 @@ export function activate(context: vscode.ExtensionContext): void {
     }
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.refresh', () => {
+        vscode.commands.registerCommand('compileTargetsExplorer.refresh', () => {
             void provider.refresh();
         })
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.openFile', (item?: CompileTargetItem) => {
+        vscode.commands.registerCommand('compileTargetsExplorer.openFile', (item?: CompileTargetItem) => {
             const selected = getSelectedItem(item);
             if (!selected) { return; }
             vscode.window.showTextDocument(vscode.Uri.file(selected.filePath), { preview: true });
@@ -30,7 +30,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.openToSide', (item?: CompileTargetItem) => {
+        vscode.commands.registerCommand('compileTargetsExplorer.openToSide', (item?: CompileTargetItem) => {
             const selected = getSelectedItem(item);
             if (!selected) { return; }
             vscode.window.showTextDocument(vscode.Uri.file(selected.filePath), { viewColumn: vscode.ViewColumn.Beside, preview: true });
@@ -38,7 +38,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.copyPath', (item?: CompileTargetItem) => {
+        vscode.commands.registerCommand('compileTargetsExplorer.copyPath', (item?: CompileTargetItem) => {
             const selected = getSelectedItem(item);
             if (!selected) { return; }
             vscode.env.clipboard.writeText(selected.filePath);
@@ -46,7 +46,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.copyRelativePath', (item?: CompileTargetItem) => {
+        vscode.commands.registerCommand('compileTargetsExplorer.copyRelativePath', (item?: CompileTargetItem) => {
             const selected = getSelectedItem(item);
             if (!selected) { return; }
             const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -56,7 +56,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.revealInOS', (item?: CompileTargetItem) => {
+        vscode.commands.registerCommand('compileTargetsExplorer.revealInOS', (item?: CompileTargetItem) => {
             const selected = getSelectedItem(item);
             if (!selected) { return; }
             vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(selected.filePath));
@@ -64,7 +64,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.openInTerminal', (item?: CompileTargetItem) => {
+        vscode.commands.registerCommand('compileTargetsExplorer.openInTerminal', (item?: CompileTargetItem) => {
             const selected = getSelectedItem(item);
             if (!selected) { return; }
             const dir = path.dirname(selected.filePath);
@@ -74,7 +74,7 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
-        vscode.commands.registerCommand('cmakeCompileExplorer.searchInTargets', async () => {
+        vscode.commands.registerCommand('compileTargetsExplorer.searchInTargets', async () => {
             const files = provider.getAllFilePaths();
             if (files.length === 0) {
                 vscode.window.showWarningMessage(vscode.l10n.t('No compile target files found'));
@@ -95,18 +95,30 @@ export function activate(context: vscode.ExtensionContext): void {
     // 設定変更時に自動リフレッシュ
     context.subscriptions.push(
         vscode.workspace.onDidChangeConfiguration((e) => {
-            if (e.affectsConfiguration('cmakeCompileExplorer')) {
+            if (e.affectsConfiguration('compileTargetsExplorer')
+                || e.affectsConfiguration('clangd.arguments')
+                || e.affectsConfiguration('cmake.buildDirectory')
+                || e.affectsConfiguration('cmake.configurePreset')) {
                 void provider.refresh();
             }
         })
     );
 
     // compile_commands.json が変更されたら自動リフレッシュ
-    const watcher = vscode.workspace.createFileSystemWatcher('**/compile_commands.json');
-    watcher.onDidChange(() => void provider.refresh());
-    watcher.onDidCreate(() => void provider.refresh());
-    watcher.onDidDelete(() => void provider.refresh());
-    context.subscriptions.push(watcher);
+    const ccWatcher = vscode.workspace.createFileSystemWatcher('**/compile_commands.json');
+    ccWatcher.onDidChange(() => void provider.refresh());
+    ccWatcher.onDidCreate(() => void provider.refresh());
+    ccWatcher.onDidDelete(() => void provider.refresh());
+    context.subscriptions.push(ccWatcher);
+
+    // .clangd, CMakePresets.json, CMakeUserPresets.json の変更も監視
+    for (const pattern of ['**/.clangd', '**/CMakePresets.json', '**/CMakeUserPresets.json']) {
+        const w = vscode.workspace.createFileSystemWatcher(pattern);
+        w.onDidChange(() => void provider.refresh());
+        w.onDidCreate(() => void provider.refresh());
+        w.onDidDelete(() => void provider.refresh());
+        context.subscriptions.push(w);
+    }
 }
 
 export function deactivate(): void { }

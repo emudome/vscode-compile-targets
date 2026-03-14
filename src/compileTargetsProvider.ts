@@ -141,7 +141,7 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
 
             // Phase 2: #include の解決をバックグラウンドで実行（ノンブロッキング）
             // Phase 2 完了後に allFilePaths を正確なセットに置き換える
-            const config = vscode.workspace.getConfiguration('cmakeCompileExplorer');
+            const config = vscode.workspace.getConfiguration('compileTargetsExplorer');
             const showHeaders = config.get<boolean>('showHeaders', true);
             if (showHeaders) {
                 void this.resolveIncludesBackground(gen, sourceEntries, newSourcePaths, workspaceRoot);
@@ -258,7 +258,7 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         sourcePaths: Set<string>,
         workspaceRoot: string,
     ): Promise<void> {
-        const config = vscode.workspace.getConfiguration('cmakeCompileExplorer');
+        const config = vscode.workspace.getConfiguration('compileTargetsExplorer');
         const headerExtensions = config.get<string[]>('headerExtensions', ['.h', '.hpp', '.hxx', '.hh']);
         const extSet = new Set(headerExtensions.map(e => e.toLowerCase()));
 
@@ -573,38 +573,198 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         });
     }
 
+    /**
+     * compile_commands.json のパスを優先順位に従って解決し、読み込む。
+     *
+     * 解決順序:
+     * 1. clangd.arguments の --compile-commands-dir
+     * 2. .clangd の CompileFlags.CompilationDatabase
+     * 3. cmake.buildDirectory（変数展開あり）
+     * 4. CMakePresets.json のアクティブプリセットの binaryDir
+     * 5. ${workspaceFolder}/build
+     * 6. ${workspaceFolder}（ルート直下）
+     */
     private async loadCompileCommands(): Promise<CompileCommandEntry[] | undefined> {
         const workspaceRoot = this.getWorkspaceRoot();
         if (!workspaceRoot) {
             return undefined;
         }
 
-        const config = vscode.workspace.getConfiguration('cmakeCompileExplorer');
-        const dirSetting = config.get<string>('compileCommandsDir', 'build');
+        const candidates = await this.resolveCompileCommandsCandidates(workspaceRoot);
 
-        let compileCommandsPath: string;
-        if (path.isAbsolute(dirSetting)) {
-            compileCommandsPath = path.join(dirSetting, 'compile_commands.json');
-        } else {
-            compileCommandsPath = path.join(workspaceRoot, dirSetting, 'compile_commands.json');
+        for (const candidate of candidates) {
+            if (await this.fileExists(candidate)) {
+                try {
+                    const content = await fs.readFile(candidate, 'utf-8');
+                    return JSON.parse(content) as CompileCommandEntry[];
+                } catch (e) {
+                    vscode.window.showErrorMessage(
+                        vscode.l10n.t('Failed to read compile_commands.json: {0}', String(e))
+                    );
+                    return undefined;
+                }
+            }
         }
 
-        if (!(await this.fileExists(compileCommandsPath))) {
-            vscode.window.showWarningMessage(
-                vscode.l10n.t('compile_commands.json not found: {0}', compileCommandsPath)
-            );
-            return undefined;
-        }
+        vscode.window.showWarningMessage(
+            vscode.l10n.t('compile_commands.json not found')
+        );
+        return undefined;
+    }
 
+    /**
+     * compile_commands.json の候補パスを優先順位順に返す（重複除去済み）
+     */
+    private async resolveCompileCommandsCandidates(workspaceRoot: string): Promise<string[]> {
+        const seen = new Set<string>();
+        const candidates: string[] = [];
+
+        const add = (dir: string) => {
+            const p = path.normalize(path.join(dir, 'compile_commands.json'));
+            if (!seen.has(p)) {
+                seen.add(p);
+                candidates.push(p);
+            }
+        };
+
+        // 1. clangd.arguments の --compile-commands-dir
+        const clangdDir = this.resolveFromClangdArguments(workspaceRoot);
+        if (clangdDir) { add(clangdDir); }
+
+        // 2. .clangd の CompileFlags.CompilationDatabase
+        const dotClangdDir = await this.resolveFromDotClangd(workspaceRoot);
+        if (dotClangdDir) { add(dotClangdDir); }
+
+        // 3. cmake.buildDirectory
+        const cmakeDir = this.resolveFromCmakeBuildDirectory(workspaceRoot);
+        if (cmakeDir) { add(cmakeDir); }
+
+        // 4. CMakePresets.json のアクティブプリセットの binaryDir
+        const presetDir = await this.resolveFromCMakePresets(workspaceRoot);
+        if (presetDir) { add(presetDir); }
+
+        // 5. ${workspaceFolder}/build
+        add(path.join(workspaceRoot, 'build'));
+
+        // 6. ${workspaceFolder}
+        add(workspaceRoot);
+
+        return candidates;
+    }
+
+    /** clangd.arguments から --compile-commands-dir を抽出 */
+    private resolveFromClangdArguments(workspaceRoot: string): string | undefined {
+        const args = vscode.workspace.getConfiguration('clangd').get<string[]>('arguments', []);
+        for (let i = 0; i < args.length; i++) {
+            const arg = args[i];
+            if (arg.startsWith('--compile-commands-dir=')) {
+                const dir = arg.slice('--compile-commands-dir='.length);
+                return this.expandVariables(dir, workspaceRoot);
+            }
+            if (arg === '--compile-commands-dir' && i + 1 < args.length) {
+                return this.expandVariables(args[i + 1], workspaceRoot);
+            }
+        }
+        return undefined;
+    }
+
+    /** .clangd ファイルから CompileFlags.CompilationDatabase を抽出 */
+    private async resolveFromDotClangd(workspaceRoot: string): Promise<string | undefined> {
+        const dotClangdPath = path.join(workspaceRoot, '.clangd');
         try {
-            const content = await fs.readFile(compileCommandsPath, 'utf-8');
-            return JSON.parse(content) as CompileCommandEntry[];
-        } catch (e) {
-            vscode.window.showErrorMessage(
-                vscode.l10n.t('Failed to read compile_commands.json: {0}', String(e))
-            );
-            return undefined;
+            const content = await fs.readFile(dotClangdPath, 'utf-8');
+            // CompilationDatabase: <path> を正規表現で抽出
+            // 複数ドキュメント（---区切り）にも対応
+            const match = /^\s*CompilationDatabase\s*:\s*(.+)$/m.exec(content);
+            if (match) {
+                const dir = match[1].trim();
+                const expanded = this.expandVariables(dir, workspaceRoot);
+                if (path.isAbsolute(expanded)) {
+                    return expanded;
+                }
+                return path.resolve(workspaceRoot, expanded);
+            }
+        } catch {
+            // .clangd が存在しない場合は無視
         }
+        return undefined;
+    }
+
+    /** cmake.buildDirectory 設定からビルドディレクトリを取得 */
+    private resolveFromCmakeBuildDirectory(workspaceRoot: string): string | undefined {
+        const cmakeConfig = vscode.workspace.getConfiguration('cmake');
+        const buildDir = cmakeConfig.get<string>('buildDirectory');
+        if (!buildDir) { return undefined; }
+
+        const expanded = this.expandVariables(buildDir, workspaceRoot);
+        if (path.isAbsolute(expanded)) {
+            return expanded;
+        }
+        return path.resolve(workspaceRoot, expanded);
+    }
+
+    /** CMakePresets.json / CMakeUserPresets.json からアクティブプリセットの binaryDir を取得 */
+    private async resolveFromCMakePresets(workspaceRoot: string): Promise<string | undefined> {
+        // アクティブなプリセット名を CMake Tools の設定から取得
+        const cmakeConfig = vscode.workspace.getConfiguration('cmake');
+        const activePresetName = cmakeConfig.get<string>('configurePreset');
+
+        const presetFiles = [
+            path.join(workspaceRoot, 'CMakeUserPresets.json'),
+            path.join(workspaceRoot, 'CMakePresets.json'),
+        ];
+
+        for (const presetFile of presetFiles) {
+            try {
+                const content = await fs.readFile(presetFile, 'utf-8');
+                const data = JSON.parse(content) as {
+                    configurePresets?: Array<{
+                        name: string;
+                        binaryDir?: string;
+                        inherits?: string | string[];
+                    }>;
+                };
+                if (!data.configurePresets || data.configurePresets.length === 0) {
+                    continue;
+                }
+
+                // アクティブプリセット名が設定されていればそれを探す
+                let preset = activePresetName
+                    ? data.configurePresets.find(p => p.name === activePresetName)
+                    : undefined;
+
+                // 見つからなければ最初のプリセットを使用
+                if (!preset) {
+                    preset = data.configurePresets[0];
+                }
+
+                if (preset?.binaryDir) {
+                    const expanded = this.expandVariables(preset.binaryDir, workspaceRoot, preset.name);
+                    if (path.isAbsolute(expanded)) {
+                        return expanded;
+                    }
+                    return path.resolve(workspaceRoot, expanded);
+                }
+            } catch {
+                // ファイルが存在しないまたはパースエラー
+            }
+        }
+        return undefined;
+    }
+
+    /**
+     * CMake / VS Code スタイルの変数を展開する。
+     * 対応: ${workspaceFolder}, ${sourceDir}, ${presetName}, ${workspaceRoot}
+     */
+    private expandVariables(value: string, workspaceRoot: string, presetName?: string): string {
+        let result = value;
+        result = result.replace(/\$\{workspaceFolder\}/g, workspaceRoot);
+        result = result.replace(/\$\{workspaceRoot\}/g, workspaceRoot);
+        result = result.replace(/\$\{sourceDir\}/g, workspaceRoot);
+        if (presetName) {
+            result = result.replace(/\$\{presetName\}/g, presetName);
+        }
+        return result;
     }
 
     private getWorkspaceRoot(): string | undefined {

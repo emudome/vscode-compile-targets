@@ -1,8 +1,7 @@
 {
-  "displayName": "CMake Compile Explorer",
+  "displayName": "Compile Targets Explorer",
   "description": "Displays compile target files in Explorer based on compile_commands.json",
-  "configuration.title": "CMake Compile Explorer",
-  "config.compileCommandsDir.description": "Directory where compile_commands.json is located (relative to workspace root, or absolute path)",
+  "configuration.title": "Compile Targets Explorer",
   "config.showHeaders.description": "Collect and display header files from -I paths in compile commands",
   "config.headerExtensions.description": "List of file extensions to recognize as header files",
   "view.compileTargets.name": "Compile Targets",
@@ -14,5 +13,5 @@
   "command.copyRelativePath.title": "Copy Relative Path",
   "command.revealInOS.title": "Reveal in File Explorer",
   "command.openInTerminal.title": "Open in Integrated Terminal",
-  "command.category": "CMake Compile Explorer"
+  "command.category": "Compile Targets Explorer"
 }
