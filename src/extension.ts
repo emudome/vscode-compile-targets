@@ -3,7 +3,7 @@ import * as path from 'path';
 import { CompileTargetsProvider, CompileTargetItem } from './compileTargetsProvider';
 
 export function activate(context: vscode.ExtensionContext): void {
-    const provider = new CompileTargetsProvider();
+    const provider = new CompileTargetsProvider(context.storageUri?.fsPath);
 
     const treeView = vscode.window.createTreeView('cmakeCompileExplorer', {
         treeDataProvider: provider,

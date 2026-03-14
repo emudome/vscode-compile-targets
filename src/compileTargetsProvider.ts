@@ -53,6 +53,9 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
     private rootNodes: CompileTargetItem[] = [];
     private building = false;
 
+    /** キャンセル用のジェネレーションカウンタ */
+    private generation = 0;
+
     /** ファイル存在チェックのキャッシュ */
     private existsCache = new Map<string, boolean>();
 
@@ -62,8 +65,15 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
     /** ファイルごとの #include 解析済みフラグ（resolveIncludes の再入防止） */
     private includesParsedCache = new Set<string>();
 
-    constructor() {
-        this.refresh();
+    /** 収集済みファイルの絶対パス（ソース + ヘッダー） */
+    private allFilePaths = new Set<string>();
+
+    /** 永続化キャッシュのディレクトリパス */
+    private storagePath: string | undefined;
+
+    constructor(storagePath: string | undefined) {
+        this.storagePath = storagePath;
+        void this.initAsync();
     }
 
     async refresh(): Promise<void> {
@@ -71,28 +81,81 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             return;
         }
         this.building = true;
+        this.generation++;
+        const gen = this.generation;
+
         try {
-            await this.buildTreeAsync();
+            // キャッシュをクリア
+            this.existsCache.clear();
+            this.includeResolveCache.clear();
+            this.includesParsedCache.clear();
+
+            const entries = await this.loadCompileCommands();
+            if (!entries) {
+                this.allFilePaths.clear();
+                this.rootNodes = [];
+                this._onDidChangeTreeData.fire(undefined);
+                return;
+            }
+
+            const workspaceRoot = this.getWorkspaceRoot();
+            if (!workspaceRoot) {
+                this.allFilePaths.clear();
+                this.rootNodes = [];
+                this._onDidChangeTreeData.fire(undefined);
+                return;
+            }
+
+            // Phase 1: compile_commands.json のソースファイルを収集して即座に表示
+            const sourceEntries: { entry: CompileCommandEntry; absPath: string }[] = [];
+            for (const entry of entries) {
+                let filePath = entry.file;
+                if (!path.isAbsolute(filePath)) {
+                    filePath = path.resolve(entry.directory, filePath);
+                }
+                filePath = path.normalize(filePath);
+                sourceEntries.push({ entry, absPath: filePath });
+            }
+
+            const uniquePaths = [...new Set(sourceEntries.map(e => e.absPath))];
+            await this.batchCheckExists(uniquePaths);
+
+            const newSourcePaths = new Set<string>();
+            for (const { absPath } of sourceEntries) {
+                if (this.existsCache.get(absPath)) {
+                    newSourcePaths.add(absPath);
+                }
+            }
+
+            // キャッシュからの復元パスにソースファイルをマージ
+            // キャッシュ分のヘッダーは残し、Phase 2で正しく再検証される
+            const previousSize = this.allFilePaths.size;
+            for (const p of newSourcePaths) {
+                this.allFilePaths.add(p);
+            }
+
+            // 新しいファイルが追加された場合のみツリーを再構築（ちらつき防止）
+            if (this.allFilePaths.size !== previousSize || this.rootNodes.length === 0) {
+                this.rebuildTree(workspaceRoot);
+            }
+
+            // Phase 2: #include の解決をバックグラウンドで実行（ノンブロッキング）
+            // Phase 2 完了後に allFilePaths を正確なセットに置き換える
+            const config = vscode.workspace.getConfiguration('cmakeCompileExplorer');
+            const showHeaders = config.get<boolean>('showHeaders', true);
+            if (showHeaders) {
+                void this.resolveIncludesBackground(gen, sourceEntries, newSourcePaths, workspaceRoot);
+            } else {
+                void this.persistPaths(workspaceRoot);
+            }
         } finally {
             this.building = false;
         }
-        this._onDidChangeTreeData.fire(undefined);
     }
 
     /** ツリーに含まれるすべてのファイルパスを返す */
     getAllFilePaths(): string[] {
-        const files: string[] = [];
-        const collect = (nodes: CompileTargetItem[]) => {
-            for (const node of nodes) {
-                if (node.isFile) {
-                    files.push(node.filePath);
-                } else if (node.children) {
-                    collect(Array.from(node.children.values()));
-                }
-            }
-        };
-        collect(this.rootNodes);
-        return files;
+        return [...this.allFilePaths];
     }
 
     getTreeItem(element: CompileTargetItem): vscode.TreeItem {
@@ -116,74 +179,31 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
 
     // --- private ---
 
-    private async buildTreeAsync(): Promise<void> {
-        // キャッシュをクリア
-        this.existsCache.clear();
-        this.includeResolveCache.clear();
-        this.includesParsedCache.clear();
-
-        const entries = await this.loadCompileCommands();
-        if (!entries) {
-            this.rootNodes = [];
-            return;
-        }
-
+    /** 起動時の初期化: キャッシュから即座に表示し、その後フルリフレッシュ */
+    private async initAsync(): Promise<void> {
         const workspaceRoot = this.getWorkspaceRoot();
-        if (!workspaceRoot) {
-            this.rootNodes = [];
-            return;
+        const hasCachedView = await this.restoreFromCache(workspaceRoot);
+        // キャッシュ表示済みでも最新状態に同期するためリフレッシュ
+        // ただしキャッシュがあればユーザーは既にツリーを見ている
+        await this.refresh();
+    }
+
+    /** キャッシュからツリーを復元。復元できたら true */
+    private async restoreFromCache(workspaceRoot: string | undefined): Promise<boolean> {
+        if (!workspaceRoot) { return false; }
+        const cached = await this.loadCachedPaths();
+        if (!cached || cached.length === 0) { return false; }
+        for (const rel of cached) {
+            this.allFilePaths.add(path.resolve(workspaceRoot, rel));
         }
+        this.rebuildTree(workspaceRoot);
+        return true;
+    }
 
-        // ファイル一覧を取得して絶対パスのセットに正規化（並列で存在チェック）
-        const absolutePaths = new Set<string>();
-        const sourceEntries: { entry: CompileCommandEntry; absPath: string }[] = [];
-
-        // まずパスを正規化
-        for (const entry of entries) {
-            let filePath = entry.file;
-            if (!path.isAbsolute(filePath)) {
-                filePath = path.resolve(entry.directory, filePath);
-            }
-            filePath = path.normalize(filePath);
-            sourceEntries.push({ entry, absPath: filePath });
-        }
-
-        // 存在チェックを並列実行
-        const uniquePaths = [...new Set(sourceEntries.map(e => e.absPath))];
-        await this.batchCheckExists(uniquePaths);
-
-        for (const { absPath } of sourceEntries) {
-            if (this.existsCache.get(absPath)) {
-                absolutePaths.add(absPath);
-            }
-        }
-
-        // ヘッダーファイル収集（#include を再帰的に解決）
-        const config = vscode.workspace.getConfiguration('cmakeCompileExplorer');
-        const showHeaders = config.get<boolean>('showHeaders', true);
-        if (showHeaders) {
-            const headerExtensions = config.get<string[]>('headerExtensions', ['.h', '.hpp', '.hxx', '.hh']);
-            const extSet = new Set(headerExtensions.map(e => e.toLowerCase()));
-
-            // エントリごとのインクルードパスを事前計算（重複排除）
-            const entryIncludeDirs = new Map<string, string[]>();
-            for (const { entry, absPath } of sourceEntries) {
-                if (!absolutePaths.has(absPath)) { continue; }
-                if (entryIncludeDirs.has(absPath)) { continue; }
-                const includeDirs = this.extractIncludePaths(entry);
-                const sourceDir = path.dirname(absPath);
-                entryIncludeDirs.set(absPath, [sourceDir, ...includeDirs]);
-            }
-
-            // 各ソースファイルの #include を解決
-            for (const [sourceFile, searchDirs] of entryIncludeDirs) {
-                await this.resolveIncludes(sourceFile, searchDirs, workspaceRoot, extSet, absolutePaths);
-            }
-        }
-
-        // 相対パスに変換
+    /** 収集済みパス (this.allFilePaths) からツリーを再構築して TreeView を更新 */
+    private rebuildTree(workspaceRoot: string): void {
         const relativePaths = new Set<string>();
-        for (const absPath of absolutePaths) {
+        for (const absPath of this.allFilePaths) {
             const rel = path.relative(workspaceRoot, absPath);
             if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
                 relativePaths.add(rel);
@@ -192,7 +212,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             }
         }
 
-        // ツリー構築
         const root = new Map<string, CompileTargetItem>();
 
         for (const rel of relativePaths) {
@@ -229,6 +248,118 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             }
             return a.label.localeCompare(b.label);
         });
+        this._onDidChangeTreeData.fire(undefined);
+    }
+
+    /** バックグラウンドで #include を解決してツリーを段階的に更新 */
+    private async resolveIncludesBackground(
+        gen: number,
+        sourceEntries: { entry: CompileCommandEntry; absPath: string }[],
+        sourcePaths: Set<string>,
+        workspaceRoot: string,
+    ): Promise<void> {
+        const config = vscode.workspace.getConfiguration('cmakeCompileExplorer');
+        const headerExtensions = config.get<string[]>('headerExtensions', ['.h', '.hpp', '.hxx', '.hh']);
+        const extSet = new Set(headerExtensions.map(e => e.toLowerCase()));
+
+        // エントリごとのインクルードパスを事前計算（重複排除）
+        const entryIncludeDirs = new Map<string, string[]>();
+        for (const { entry, absPath } of sourceEntries) {
+            if (!sourcePaths.has(absPath)) { continue; }
+            if (entryIncludeDirs.has(absPath)) { continue; }
+            const includeDirs = this.extractIncludePaths(entry);
+            const sourceDir = path.dirname(absPath);
+            entryIncludeDirs.set(absPath, [sourceDir, ...includeDirs]);
+        }
+
+        // include解決で発見されたヘッダーを別Setで追跡
+        const resolvedHeaders = new Set<string>();
+
+        let newFilesCount = 0;
+        const UPDATE_THRESHOLD = 50;
+
+        for (const [sourceFile, searchDirs] of entryIncludeDirs) {
+            if (gen !== this.generation) { return; }
+
+            const before = resolvedHeaders.size;
+            await this.resolveIncludes(sourceFile, searchDirs, workspaceRoot, extSet, resolvedHeaders);
+
+            const added = resolvedHeaders.size - before;
+            if (added > 0) {
+                // 新しいヘッダーを allFilePaths に追加
+                for (const h of resolvedHeaders) {
+                    this.allFilePaths.add(h);
+                }
+                newFilesCount += added;
+                if (newFilesCount >= UPDATE_THRESHOLD) {
+                    if (gen !== this.generation) { return; }
+                    this.rebuildTree(workspaceRoot);
+                    newFilesCount = 0;
+                }
+            }
+        }
+
+        if (gen !== this.generation) { return; }
+
+        // 完了: allFilePaths を正確な sourcePaths ∪ resolvedHeaders に置き換え
+        // （キャッシュ由来の古いエントリがあれば除去される）
+        const finalPaths = new Set(sourcePaths);
+        for (const h of resolvedHeaders) {
+            finalPaths.add(h);
+        }
+        const changed = finalPaths.size !== this.allFilePaths.size;
+        this.allFilePaths = finalPaths;
+        if (changed || newFilesCount > 0) {
+            this.rebuildTree(workspaceRoot);
+        }
+
+        // 完了後にキャッシュを永続化
+        if (gen === this.generation) {
+            void this.persistPaths(workspaceRoot);
+        }
+    }
+
+    // --- 永続化 ---
+
+    private get cacheFilePath(): string | undefined {
+        if (!this.storagePath) { return undefined; }
+        return path.join(this.storagePath, 'fileListCache.json');
+    }
+
+    private async loadCachedPaths(): Promise<string[] | undefined> {
+        const cachePath = this.cacheFilePath;
+        if (!cachePath) { return undefined; }
+
+        try {
+            const content = await fs.readFile(cachePath, 'utf-8');
+            const data: unknown = JSON.parse(content);
+            if (Array.isArray(data)) {
+                return data;
+            }
+        } catch {
+            // キャッシュなしまたは不正
+        }
+        return undefined;
+    }
+
+    private async persistPaths(workspaceRoot: string): Promise<void> {
+        const cachePath = this.cacheFilePath;
+        if (!cachePath) { return; }
+
+        const relativePaths: string[] = [];
+        for (const absPath of this.allFilePaths) {
+            const rel = path.relative(workspaceRoot, absPath);
+            if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+                relativePaths.push(rel);
+            }
+        }
+
+        try {
+            await fs.mkdir(path.dirname(cachePath), { recursive: true });
+            await fs.writeFile(cachePath, JSON.stringify(relativePaths));
+        } catch {
+            // 書き込みエラーは無視
+        }
     }
 
     /**
