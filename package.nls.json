@@ -13,5 +13,6 @@
   "command.copyRelativePath.title": "Copy Relative Path",
   "command.revealInOS.title": "Reveal in File Explorer",
   "command.openInTerminal.title": "Open in Integrated Terminal",
+  "command.findInFolder.title": "Find in Folder",
   "command.category": "Compile Targets Explorer"
 }

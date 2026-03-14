@@ -59,7 +59,7 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('compileTargetsExplorer.revealInOS', (item?: CompileTargetItem) => {
             const selected = getSelectedItem(item);
             if (!selected) { return; }
-            vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(selected.filePath));
+            void vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(selected.filePath));
         })
     );
 
@@ -67,9 +67,27 @@ export function activate(context: vscode.ExtensionContext): void {
         vscode.commands.registerCommand('compileTargetsExplorer.openInTerminal', (item?: CompileTargetItem) => {
             const selected = getSelectedItem(item);
             if (!selected) { return; }
-            const dir = path.dirname(selected.filePath);
+            const dir = selected.isFile ? path.dirname(selected.filePath) : selected.filePath;
             const terminal = vscode.window.createTerminal({ cwd: dir });
             terminal.show();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('compileTargetsExplorer.findInFolder', async (item?: CompileTargetItem) => {
+            const selected = getSelectedItem(item);
+            if (!selected || selected.isFile) { return; }
+            const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+            if (!workspaceRoot) { return; }
+
+            const files = collectFiles(selected);
+            if (files.length === 0) { return; }
+
+            const filesToInclude = buildCompactGlob(files, workspaceRoot);
+            await vscode.commands.executeCommand('workbench.action.findInFiles', {
+                filesToInclude,
+                triggerSearch: false,
+            });
         })
     );
 
@@ -122,6 +140,19 @@ export function activate(context: vscode.ExtensionContext): void {
 }
 
 export function deactivate(): void { }
+
+/** フォルダノード配下のすべてのファイルパスを再帰的に収集する */
+function collectFiles(node: CompileTargetItem): string[] {
+    const result: string[] = [];
+    if (node.isFile) {
+        result.push(node.filePath);
+    } else if (node.children) {
+        for (const child of node.children.values()) {
+            result.push(...collectFiles(child));
+        }
+    }
+    return result;
+}
 
 /**
  * ファイルパス一覧からコンパクトな glob パターン文字列を生成する。

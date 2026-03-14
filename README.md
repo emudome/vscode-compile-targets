@@ -1,38 +1,38 @@
 # Compile Targets Explorer
 
-`compile_commands.json` に基づいて、コンパイル対象のファイルのみをエクスプローラーのツリービューに表示する VS Code 拡張機能です。
+A VS Code extension that displays only compilation target files in the Explorer tree view, based on `compile_commands.json`.
 
-## 機能
+## Features
 
-- **コンパイル対象ファイルの表示**: `compile_commands.json` に記載されたファイルをフォルダ階層付きでエクスプローラーに表示
-- **ヘッダーファイルの自動収集**: `#include` を再帰的に辿り、関連ヘッダーをツリーに追加
-- **ファイルを直接開く**: ツリー上のファイルをクリックするとエディタで開きます
-- **自動リフレッシュ**: `compile_commands.json` の変更を検知して自動更新
-- **手動リフレッシュ**: ビューのタイトルバーにあるリフレッシュボタンで手動更新
-- **compile_commands.json の自動検出**: clangd設定、CMake設定、CMakePresetsから自動的にパスを解決
+- **Display Compile Target Files**: Shows files listed in `compile_commands.json` with their folder hierarchy in the Explorer
+- **Automatic Header Collection**: Recursively follows `#include` directives and adds related headers to the tree
+- **Open Files Directly**: Click a file in the tree to open it in the editor
+- **Auto Refresh**: Automatically updates when `compile_commands.json` changes
+- **Manual Refresh**: Manually update via the refresh button in the view title bar
+- **Auto-detection of compile_commands.json**: Automatically resolves the path from clangd settings, CMake settings, and CMakePresets
 
-## compile_commands.json の検出順序
+## compile_commands.json Detection Order
 
-以下の優先順位で `compile_commands.json` を自動検出します:
+The extension auto-detects `compile_commands.json` in the following priority order:
 
-1. `clangd.arguments` の `--compile-commands-dir`
-2. `.clangd` ファイルの `CompileFlags.CompilationDatabase`
-3. `cmake.buildDirectory` 設定（変数展開対応）
-4. `CMakePresets.json` / `CMakeUserPresets.json` のアクティブプリセットの `binaryDir`
+1. `--compile-commands-dir` in `clangd.arguments`
+2. `CompileFlags.CompilationDatabase` in the `.clangd` file
+3. `cmake.buildDirectory` setting (with variable expansion support)
+4. `binaryDir` of the active preset in `CMakePresets.json` / `CMakeUserPresets.json`
 5. `${workspaceFolder}/build`
-6. `${workspaceFolder}`（ルート直下）
+6. `${workspaceFolder}` (workspace root)
 
-## 設定
+## Settings
 
-| 設定名 | デフォルト値 | 説明 |
-|--------|-------------|------|
-| `compileTargetsExplorer.showHeaders` | `true` | コンパイルコマンドの -I パスからヘッダーファイルを収集して表示する |
-| `compileTargetsExplorer.excludePatterns` | `[]` | ツリーから除外するファイルの glob パターン（例: `**/compiler/**`） |
+| Setting | Default | Description |
+|---------|---------|-------------|
+| `compileTargetsExplorer.showHeaders` | `true` | Collect and display header files from -I paths in compile commands |
+| `compileTargetsExplorer.excludePatterns` | `[]` | Glob patterns for files to exclude from the tree (e.g., `**/compiler/**`) |
 
-## 使い方
+## Usage
 
-1. プロジェクトで `compile_commands.json` を生成します:
+1. Generate `compile_commands.json` in your project:
    ```bash
    cmake -B build -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
    ```
-2. エクスプローラーサイドバーに「**Compile Targets**」ビューが表示されます
+2. The "**Compile Targets**" view will appear in the Explorer sidebar

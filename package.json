@@ -85,6 +85,10 @@
       {
         "command": "compileTargetsExplorer.openInTerminal",
         "title": "%command.openInTerminal.title%"
+      },
+      {
+        "command": "compileTargetsExplorer.findInFolder",
+        "title": "%command.findInFolder.title%"
       }
     ],
     "menus": {
@@ -129,6 +133,31 @@
         {
           "command": "compileTargetsExplorer.openInTerminal",
           "when": "view == compileTargetsExplorer && viewItem == file",
+          "group": "7_reveal@2"
+        },
+        {
+          "command": "compileTargetsExplorer.findInFolder",
+          "when": "view == compileTargetsExplorer && viewItem == folder",
+          "group": "4_search@1"
+        },
+        {
+          "command": "compileTargetsExplorer.copyPath",
+          "when": "view == compileTargetsExplorer && viewItem == folder",
+          "group": "6_copypath@1"
+        },
+        {
+          "command": "compileTargetsExplorer.copyRelativePath",
+          "when": "view == compileTargetsExplorer && viewItem == folder",
+          "group": "6_copypath@2"
+        },
+        {
+          "command": "compileTargetsExplorer.revealInOS",
+          "when": "view == compileTargetsExplorer && viewItem == folder",
+          "group": "7_reveal@1"
+        },
+        {
+          "command": "compileTargetsExplorer.openInTerminal",
+          "when": "view == compileTargetsExplorer && viewItem == folder",
           "group": "7_reveal@2"
         }
       ]
