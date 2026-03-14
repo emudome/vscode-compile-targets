@@ -3,7 +3,7 @@
   "description": "compile_commands.json に基づいてコンパイル対象ファイルをエクスプローラーに表示します",
   "configuration.title": "コンパイルターゲットエクスプローラー",
   "config.showHeaders.description": "コンパイルコマンドの -I パスからヘッダーファイルを収集して表示する",
-  "config.headerExtensions.description": "ヘッダーファイルとして認識する拡張子のリスト",
+  "config.excludePatterns.description": "ツリーから除外するファイルの glob パターン（例: \"**/compiler/**\"）",
   "view.compileTargets.name": "コンパイル対象",
   "command.refresh.title": "更新",
   "command.openFile.title": "ファイルを開く",

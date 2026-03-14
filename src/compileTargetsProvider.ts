@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import * as fs from 'fs/promises';
+import picomatch from 'picomatch';
 
 /** compile_commands.json の各エントリの型 */
 interface CompileCommandEntry {
@@ -202,10 +203,18 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
 
     /** 収集済みパス (this.allFilePaths) からツリーを再構築して TreeView を更新 */
     private rebuildTree(workspaceRoot: string): void {
+        const config = vscode.workspace.getConfiguration('compileTargetsExplorer');
+        const excludePatterns = config.get<string[]>('excludePatterns', []);
+        const isExcluded = excludePatterns.length > 0
+            ? picomatch(excludePatterns, { dot: true })
+            : undefined;
+
         const relativePaths = new Set<string>();
         for (const absPath of this.allFilePaths) {
             const rel = path.relative(workspaceRoot, absPath);
             if (!rel.startsWith('..') && !path.isAbsolute(rel)) {
+                const posixRel = rel.split(path.sep).join('/');
+                if (isExcluded && isExcluded(posixRel)) { continue; }
                 relativePaths.add(rel);
             } else {
                 relativePaths.add(absPath);
@@ -258,10 +267,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         sourcePaths: Set<string>,
         workspaceRoot: string,
     ): Promise<void> {
-        const config = vscode.workspace.getConfiguration('compileTargetsExplorer');
-        const headerExtensions = config.get<string[]>('headerExtensions', ['.h', '.hpp', '.hxx', '.hh']);
-        const extSet = new Set(headerExtensions.map(e => e.toLowerCase()));
-
         // エントリごとのインクルードパスを事前計算（重複排除）
         const entryIncludeDirs = new Map<string, string[]>();
         for (const { entry, absPath } of sourceEntries) {
@@ -282,7 +287,7 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             if (gen !== this.generation) { return; }
 
             const before = resolvedHeaders.size;
-            await this.resolveIncludes(sourceFile, searchDirs, workspaceRoot, extSet, resolvedHeaders);
+            await this.resolveIncludes(sourceFile, searchDirs, workspaceRoot, resolvedHeaders);
 
             const added = resolvedHeaders.size - before;
             if (added > 0) {
@@ -437,7 +442,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         filePath: string,
         searchDirs: string[],
         workspaceRoot: string,
-        headerExtSet: Set<string>,
         resolved: Set<string>,
     ): Promise<void> {
         // 既にこのファイルの #include を解析済みならスキップ
@@ -481,17 +485,13 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
                 continue;
             }
 
-            // ヘッダー拡張子に一致するもののみ追加
-            const ext = path.extname(resolvedPath).toLowerCase();
-            if (headerExtSet.has(ext)) {
-                resolved.add(resolvedPath);
-                toResolve.push(resolvedPath);
-            }
+            resolved.add(resolvedPath);
+            toResolve.push(resolvedPath);
         }
 
         // 再帰的にヘッダー内の #include も辿る
         for (const headerPath of toResolve) {
-            await this.resolveIncludes(headerPath, searchDirs, workspaceRoot, headerExtSet, resolved);
+            await this.resolveIncludes(headerPath, searchDirs, workspaceRoot, resolved);
         }
     }
 

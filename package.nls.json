@@ -3,7 +3,7 @@
   "description": "Displays compile target files in Explorer based on compile_commands.json",
   "configuration.title": "Compile Targets Explorer",
   "config.showHeaders.description": "Collect and display header files from -I paths in compile commands",
-  "config.headerExtensions.description": "List of file extensions to recognize as header files",
+  "config.excludePatterns.description": "Glob patterns to exclude files from the tree (e.g. \"**/compiler/**\")",
   "view.compileTargets.name": "Compile Targets",
   "command.refresh.title": "Refresh",
   "command.openFile.title": "Open File",

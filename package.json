@@ -28,11 +28,11 @@
           "default": true,
           "description": "%config.showHeaders.description%"
         },
-        "compileTargetsExplorer.headerExtensions": {
+        "compileTargetsExplorer.excludePatterns": {
           "type": "array",
-          "default": [".h", ".hpp", ".hxx", ".hh"],
+          "default": [],
           "items": { "type": "string" },
-          "description": "%config.headerExtensions.description%"
+          "description": "%config.excludePatterns.description%"
         }
       }
     },
@@ -158,7 +158,11 @@
   },
   "devDependencies": {
     "@types/node": "^25.4.0",
+    "@types/picomatch": "^4.0.2",
     "@types/vscode": "^1.110.0",
     "typescript": "^5.9.3"
+  },
+  "dependencies": {
+    "picomatch": "^4.0.3"
   }
 }

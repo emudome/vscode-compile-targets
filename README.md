@@ -27,7 +27,7 @@
 | 設定名 | デフォルト値 | 説明 |
 |--------|-------------|------|
 | `compileTargetsExplorer.showHeaders` | `true` | コンパイルコマンドの -I パスからヘッダーファイルを収集して表示する |
-| `compileTargetsExplorer.headerExtensions` | `[".h", ".hpp", ".hxx", ".hh"]` | ヘッダーファイルとして認識する拡張子のリスト |
+| `compileTargetsExplorer.excludePatterns` | `[]` | ツリーから除外するファイルの glob パターン（例: `**/compiler/**`） |
 
 ## 使い方
 
