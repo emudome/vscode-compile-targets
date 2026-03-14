@@ -45,7 +45,8 @@
       "explorer": [
         {
           "id": "compileTargetsExplorer",
-          "name": "%view.compileTargets.name%"
+          "name": "%view.compileTargets.name%",
+          "when": "compileTargetsExplorer.active"
         }
       ]
     },

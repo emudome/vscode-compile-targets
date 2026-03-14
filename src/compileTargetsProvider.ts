@@ -69,6 +69,12 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
     /** 収集済みファイルの絶対パス（ソース + ヘッダー） */
     private allFilePaths = new Set<string>();
 
+    /** ファイルパスから TreeItem への逆引きマップ */
+    private filePathToItem = new Map<string, CompileTargetItem>();
+
+    /** TreeItem から親 TreeItem への逆引きマップ（ルートノードは undefined） */
+    private parentMap = new Map<CompileTargetItem, CompileTargetItem | undefined>();
+
     /** 永続化キャッシュのディレクトリパス */
     private storagePath: string | undefined;
 
@@ -159,8 +165,17 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return [...this.allFilePaths];
     }
 
+    /** ファイルパスに対応する TreeItem を検索する */
+    findItemByPath(filePath: string): CompileTargetItem | undefined {
+        return this.filePathToItem.get(path.normalize(filePath));
+    }
+
     getTreeItem(element: CompileTargetItem): vscode.TreeItem {
         return element;
+    }
+
+    getParent(element: CompileTargetItem): CompileTargetItem | undefined {
+        return this.parentMap.get(element);
     }
 
     getChildren(element?: CompileTargetItem): CompileTargetItem[] {
@@ -257,7 +272,26 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             }
             return a.label.localeCompare(b.label);
         });
+        this.buildLookupMaps();
         this._onDidChangeTreeData.fire(undefined);
+    }
+
+    /** ツリー構造から filePathToItem / parentMap を構築する */
+    private buildLookupMaps(): void {
+        this.filePathToItem.clear();
+        this.parentMap.clear();
+        const walk = (nodes: CompileTargetItem[], parent: CompileTargetItem | undefined) => {
+            for (const node of nodes) {
+                this.parentMap.set(node, parent);
+                if (node.isFile) {
+                    this.filePathToItem.set(path.normalize(node.filePath), node);
+                }
+                if (node.children) {
+                    walk(Array.from(node.children.values()), node);
+                }
+            }
+        };
+        walk(this.rootNodes, undefined);
     }
 
     /** バックグラウンドで #include を解決してツリーを段階的に更新 */

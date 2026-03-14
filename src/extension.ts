@@ -3,6 +3,8 @@ import * as path from 'path';
 import { CompileTargetsProvider, CompileTargetItem } from './compileTargetsProvider';
 
 export function activate(context: vscode.ExtensionContext): void {
+    void vscode.commands.executeCommand('setContext', 'compileTargetsExplorer.active', true);
+
     const provider = new CompileTargetsProvider(context.storageUri?.fsPath);
 
     const treeView = vscode.window.createTreeView('compileTargetsExplorer', {
@@ -137,6 +139,27 @@ export function activate(context: vscode.ExtensionContext): void {
         w.onDidDelete(() => void provider.refresh());
         context.subscriptions.push(w);
     }
+
+    // アクティブエディタ変更時にツリーのフォーカスを自動移動
+    function revealActiveFile(): void {
+        const editor = vscode.window.activeTextEditor;
+        if (!editor || !treeView.visible) { return; }
+        const filePath = editor.document.uri.fsPath;
+        const item = provider.findItemByPath(filePath);
+        if (item) {
+            void treeView.reveal(item, { select: true, focus: false, expand: true });
+        }
+    }
+
+    context.subscriptions.push(
+        vscode.window.onDidChangeActiveTextEditor(() => revealActiveFile())
+    );
+
+    // 初回ツリー構築完了時にアクティブファイルを reveal
+    const initialReveal = provider.onDidChangeTreeData(function handler() {
+        initialReveal.dispose();
+        revealActiveFile();
+    });
 }
 
 export function deactivate(): void { }
