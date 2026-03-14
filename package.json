@@ -4,10 +4,15 @@
   "description": "%description%",
   "version": "0.1.0",
   "license": "MIT",
-  "publisher": "local",
+  "publisher": "emudome",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/emudome/vscode-compile-targets.git"
+  },
   "engines": {
     "vscode": "^1.110.0"
   },
+  "icon": "icon.png",
   "categories": [
     "Other"
   ],
