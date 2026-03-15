@@ -1,6 +1,8 @@
-.vscode/**
+.*
+.*/**
 src/**
 tsconfig.json
 node_modules/**
 !node_modules/picomatch/**
-.gitignore
+out/**/*.map
+*.vsix
