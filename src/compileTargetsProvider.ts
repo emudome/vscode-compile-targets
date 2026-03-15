@@ -162,13 +162,7 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             }
 
             // Phase 2: #include の解決をバックグラウンドで実行（ノンブロッキング）
-            const config = vscode.workspace.getConfiguration('compileTargetsExplorer');
-            const showHeaders = config.get<boolean>('showHeaders', true);
-            if (showHeaders) {
-                void this.resolveIncludesBackground(gen, sourceEntries, newSourcePaths, workspaceRoot);
-            } else {
-                void this.persistPaths(workspaceRoot);
-            }
+            void this.resolveIncludesBackground(gen, sourceEntries, newSourcePaths, workspaceRoot);
         } finally {
             this.building = false;
         }

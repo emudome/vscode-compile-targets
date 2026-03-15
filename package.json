@@ -28,11 +28,6 @@
     "configuration": {
       "title": "%configuration.title%",
       "properties": {
-        "compileTargetsExplorer.showHeaders": {
-          "type": "boolean",
-          "default": true,
-          "description": "%config.showHeaders.description%"
-        },
         "compileTargetsExplorer.excludePatterns": {
           "type": "array",
           "default": [],
