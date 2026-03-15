@@ -116,17 +116,13 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
 
             const entries = await this.loadCompileCommands();
             if (!entries) {
-                this.allFilePaths.clear();
-                this.rootNodes = [];
-                this._onDidChangeTreeData.fire(undefined);
+                this.clearTree();
                 return;
             }
 
             const workspaceRoot = this.getWorkspaceRoot();
             if (!workspaceRoot) {
-                this.allFilePaths.clear();
-                this.rootNodes = [];
-                this._onDidChangeTreeData.fire(undefined);
+                this.clearTree();
                 return;
             }
 
@@ -242,17 +238,18 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             return element.children ? Array.from(element.children.values()) : [];
         }
         if (element.children) {
-            return Array.from(element.children.values()).sort((a, b) => {
-                if (a.isFile !== b.isFile) {
-                    return a.isFile ? 1 : -1;
-                }
-                return a.label.localeCompare(b.label);
-            });
+            return Array.from(element.children.values());
         }
         return [];
     }
 
     // --- private ---
+
+    private clearTree(): void {
+        this.allFilePaths.clear();
+        this.rootNodes = [];
+        this._onDidChangeTreeData.fire(undefined);
+    }
 
     private async initAsync(): Promise<void> {
         const workspaceRoot = this.getWorkspaceRoot();
@@ -326,9 +323,23 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             }
             return a.label.localeCompare(b.label);
         });
+        this.sortChildrenMaps(this.rootNodes);
         this.rebuildFavoritesSection(workspaceRoot);
         this.buildLookupMaps();
         this._onDidChangeTreeData.fire(undefined);
+    }
+
+    private sortChildrenMaps(nodes: CompileTargetItem[]): void {
+        for (const node of nodes) {
+            if (!node.children) { continue; }
+            node.children = new Map(
+                [...node.children.entries()].sort(([, a], [, b]) => {
+                    if (a.isFile !== b.isFile) { return a.isFile ? 1 : -1; }
+                    return a.label.localeCompare(b.label);
+                })
+            );
+            this.sortChildrenMaps([...node.children.values()]);
+        }
     }
 
     /** お気に入りセクションのノードを再構築する */
@@ -356,9 +367,14 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             const item = new CompileTargetItem(entry.label, absPath, entry.isFile, 'favorite');
             item.iconPath = new vscode.ThemeIcon('star-full');
 
-            // ファイルの場合: クリックでファイルを開く（コンストラクタで設定済み）
-            // フォルダの場合: クリックでメインツリーの該当フォルダに移動
-            if (!entry.isFile) {
+            // ファイル/フォルダともに専用コマンドでメインツリーへ移動
+            if (entry.isFile) {
+                item.command = {
+                    command: 'compileTargetsExplorer.openFavoriteFile',
+                    title: 'Open File',
+                    arguments: [absPath],
+                };
+            } else {
                 item.collapsibleState = vscode.TreeItemCollapsibleState.None;
                 item.command = {
                     command: 'compileTargetsExplorer.revealInTree',
@@ -388,12 +404,12 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
     private buildLookupMaps(): void {
         this.pathToItem.clear();
         this.parentMap.clear();
-        const walk = (nodes: CompileTargetItem[], parent: CompileTargetItem | undefined) => {
+        const walk = (nodes: Iterable<CompileTargetItem>, parent: CompileTargetItem | undefined) => {
             for (const node of nodes) {
                 this.parentMap.set(node, parent);
                 this.pathToItem.set(path.normalize(node.filePath), node);
                 if (node.children) {
-                    walk(Array.from(node.children.values()), node);
+                    walk(node.children.values(), node);
                 }
             }
         };
@@ -427,8 +443,9 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
 
             const added = resolvedHeaders.size - before;
             if (added > 0) {
+                let i = 0;
                 for (const h of resolvedHeaders) {
-                    this.allFilePaths.add(h);
+                    if (++i > before) { this.allFilePaths.add(h); }
                 }
                 newFilesCount += added;
                 if (newFilesCount >= UPDATE_THRESHOLD) {
@@ -552,11 +569,7 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
     }
 
     private compactFolders(nodeMap: Map<string, CompileTargetItem>): CompileTargetItem[] {
-        const result: CompileTargetItem[] = [];
-        for (const node of nodeMap.values()) {
-            result.push(this.compactNode(node));
-        }
-        return result;
+        return Array.from(nodeMap.values(), node => this.compactNode(node));
     }
 
     private compactNode(node: CompileTargetItem): CompileTargetItem {
@@ -666,43 +679,26 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
     }
 
     private extractIncludePaths(entry: CompileCommandEntry): string[] {
-        const paths: string[] = [];
+        const args = entry.arguments ?? entry.command?.split(/\s+/) ?? [];
+        return this.parseArgsForIncludeDirs(args, entry.directory);
+    }
 
-        if (entry.arguments) {
-            for (let i = 0; i < entry.arguments.length; i++) {
-                const arg = entry.arguments[i];
-                if (arg === '-I' || arg === '-isystem') {
-                    if (i + 1 < entry.arguments.length) {
-                        paths.push(entry.arguments[++i]);
-                    }
-                } else if (arg.startsWith('-I')) {
-                    paths.push(arg.slice(2));
-                } else if (arg.startsWith('-isystem')) {
-                    paths.push(arg.slice(8));
-                }
-            }
-        } else if (entry.command) {
-            const args = entry.command.split(/\s+/);
-            for (let i = 0; i < args.length; i++) {
-                const arg = args[i];
-                if (arg === '-I' || arg === '-isystem') {
-                    if (i + 1 < args.length) {
-                        paths.push(args[++i]);
-                    }
-                } else if (arg.startsWith('-I')) {
-                    paths.push(arg.slice(2));
-                } else if (arg.startsWith('-isystem')) {
-                    paths.push(arg.slice(8));
-                }
+    private parseArgsForIncludeDirs(args: string[], directory: string): string[] {
+        const dirs: string[] = [];
+        for (let i = 0; i < args.length; i++) {
+            const arg = args[i];
+            if (arg === '-I' || arg === '-isystem') {
+                if (i + 1 < args.length) { dirs.push(args[++i]); }
+            } else if (arg.startsWith('-I')) {
+                dirs.push(arg.slice(2));
+            } else if (arg.startsWith('-isystem')) {
+                dirs.push(arg.slice(8));
             }
         }
-
-        return paths.map(p => {
-            if (path.isAbsolute(p)) {
-                return path.normalize(p);
-            }
-            return path.normalize(path.resolve(entry.directory, p));
-        });
+        return dirs.map(p => path.isAbsolute(p)
+            ? path.normalize(p)
+            : path.normalize(path.resolve(directory, p))
+        );
     }
 
     private async loadCompileCommands(): Promise<CompileCommandEntry[] | undefined> {

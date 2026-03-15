@@ -92,6 +92,17 @@ export function activate(context: vscode.ExtensionContext): void {
     );
 
     context.subscriptions.push(
+        vscode.commands.registerCommand('compileTargetsExplorer.openFavoriteFile', (filePath: string) => {
+            void vscode.commands.executeCommand('vscode.open', vscode.Uri.file(filePath)).then(() => {
+                const item = provider.findItemByPath(filePath);
+                if (item) {
+                    void treeView.reveal(item, { select: true, focus: false, expand: true });
+                }
+            });
+        })
+    );
+
+    context.subscriptions.push(
         vscode.commands.registerCommand('compileTargetsExplorer.revealInTree', (filePath: string) => {
             const item = provider.findItemByPath(filePath);
             if (item) {
