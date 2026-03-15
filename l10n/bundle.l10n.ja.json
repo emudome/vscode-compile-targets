@@ -1,5 +1,6 @@
 {
   "No compile target files found": "コンパイル対象ファイルがありません",
   "compile_commands.json not found": "compile_commands.json が見つかりません",
-  "Failed to read compile_commands.json: {0}": "compile_commands.json の読み込みに失敗しました: {0}"
+  "Failed to read compile_commands.json: {0}": "compile_commands.json の読み込みに失敗しました: {0}",
+  "Favorites": "お気に入り"
 }

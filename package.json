@@ -2,7 +2,7 @@
   "name": "compile-targets-explorer",
   "displayName": "%displayName%",
   "description": "%description%",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "license": "MIT",
   "publisher": "emudome",
   "repository": {
@@ -90,6 +90,14 @@
       {
         "command": "compileTargetsExplorer.findInFolder",
         "title": "%command.findInFolder.title%"
+      },
+      {
+        "command": "compileTargetsExplorer.addToFavorites",
+        "title": "%command.addToFavorites.title%"
+      },
+      {
+        "command": "compileTargetsExplorer.removeFromFavorites",
+        "title": "%command.removeFromFavorites.title%"
       }
     ],
     "menus": {
@@ -135,6 +143,21 @@
           "command": "compileTargetsExplorer.openInTerminal",
           "when": "view == compileTargetsExplorer && viewItem == file",
           "group": "7_reveal@2"
+        },
+        {
+          "command": "compileTargetsExplorer.addToFavorites",
+          "when": "view == compileTargetsExplorer && viewItem == file",
+          "group": "5_favorites@1"
+        },
+        {
+          "command": "compileTargetsExplorer.addToFavorites",
+          "when": "view == compileTargetsExplorer && viewItem == folder",
+          "group": "5_favorites@1"
+        },
+        {
+          "command": "compileTargetsExplorer.removeFromFavorites",
+          "when": "view == compileTargetsExplorer && viewItem == favorite",
+          "group": "5_favorites@1"
         },
         {
           "command": "compileTargetsExplorer.findInFolder",

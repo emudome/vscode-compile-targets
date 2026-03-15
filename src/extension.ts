@@ -5,7 +5,7 @@ import { CompileTargetsProvider, CompileTargetItem } from './compileTargetsProvi
 export function activate(context: vscode.ExtensionContext): void {
     void vscode.commands.executeCommand('setContext', 'compileTargetsExplorer.active', true);
 
-    const provider = new CompileTargetsProvider(context.storageUri?.fsPath);
+    const provider = new CompileTargetsProvider(context);
 
     const treeView = vscode.window.createTreeView('compileTargetsExplorer', {
         treeDataProvider: provider,
@@ -72,6 +72,31 @@ export function activate(context: vscode.ExtensionContext): void {
             const dir = selected.isFile ? path.dirname(selected.filePath) : selected.filePath;
             const terminal = vscode.window.createTerminal({ cwd: dir });
             terminal.show();
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('compileTargetsExplorer.addToFavorites', (item?: CompileTargetItem) => {
+            const selected = getSelectedItem(item);
+            if (!selected) { return; }
+            provider.addFavorite(selected);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('compileTargetsExplorer.removeFromFavorites', (item?: CompileTargetItem) => {
+            const selected = getSelectedItem(item);
+            if (!selected) { return; }
+            provider.removeFavorite(selected.filePath);
+        })
+    );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('compileTargetsExplorer.revealInTree', (filePath: string) => {
+            const item = provider.findItemByPath(filePath);
+            if (item) {
+                void treeView.reveal(item, { select: true, focus: true, expand: false });
+            }
         })
     );
 

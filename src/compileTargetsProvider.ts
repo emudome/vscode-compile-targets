@@ -12,6 +12,15 @@ interface CompileCommandEntry {
     output?: string;
 }
 
+/** お気に入りエントリ */
+interface FavoriteEntry {
+    /** ワークスペース相対パス（ワークスペース外なら絶対パス） */
+    path: string;
+    isFile: boolean;
+    /** ツリーに表示するラベル（フォルダのコンパクト名など） */
+    label: string;
+}
+
 /**
  * ツリービューの各ノード。
  * - フォルダの場合: children を持ち、filePath はディレクトリパス
@@ -24,6 +33,7 @@ export class CompileTargetItem extends vscode.TreeItem {
         public readonly label: string,
         public readonly filePath: string,
         public readonly isFile: boolean,
+        contextValueOverride?: string,
     ) {
         super(
             label,
@@ -39,10 +49,10 @@ export class CompileTargetItem extends vscode.TreeItem {
                 title: 'Open File',
                 arguments: [vscode.Uri.file(filePath)],
             };
-            this.contextValue = 'file';
+            this.contextValue = contextValueOverride ?? 'file';
             this.iconPath = vscode.ThemeIcon.File;
         } else {
-            this.contextValue = 'folder';
+            this.contextValue = contextValueOverride ?? 'folder';
         }
     }
 }
@@ -69,8 +79,8 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
     /** 収集済みファイルの絶対パス（ソース + ヘッダー） */
     private allFilePaths = new Set<string>();
 
-    /** ファイルパスから TreeItem への逆引きマップ */
-    private filePathToItem = new Map<string, CompileTargetItem>();
+    /** ファイル/フォルダパスから TreeItem への逆引きマップ（メインツリーのみ） */
+    private pathToItem = new Map<string, CompileTargetItem>();
 
     /** TreeItem から親 TreeItem への逆引きマップ（ルートノードは undefined） */
     private parentMap = new Map<CompileTargetItem, CompileTargetItem | undefined>();
@@ -78,8 +88,15 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
     /** 永続化キャッシュのディレクトリパス */
     private storagePath: string | undefined;
 
-    constructor(storagePath: string | undefined) {
-        this.storagePath = storagePath;
+    /** お気に入りエントリ一覧（追加順） */
+    private favorites: FavoriteEntry[] = [];
+
+    /** お気に入りセクションのルートノード */
+    private favoritesRootNode: CompileTargetItem | undefined;
+
+    constructor(private readonly context: vscode.ExtensionContext) {
+        this.storagePath = context.storageUri?.fsPath;
+        this.loadFavorites();
         void this.initAsync();
     }
 
@@ -135,19 +152,16 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             }
 
             // キャッシュからの復元パスにソースファイルをマージ
-            // キャッシュ分のヘッダーは残し、Phase 2で正しく再検証される
             const previousSize = this.allFilePaths.size;
             for (const p of newSourcePaths) {
                 this.allFilePaths.add(p);
             }
 
-            // 新しいファイルが追加された場合のみツリーを再構築（ちらつき防止）
             if (this.allFilePaths.size !== previousSize || this.rootNodes.length === 0) {
                 this.rebuildTree(workspaceRoot);
             }
 
             // Phase 2: #include の解決をバックグラウンドで実行（ノンブロッキング）
-            // Phase 2 完了後に allFilePaths を正確なセットに置き換える
             const config = vscode.workspace.getConfiguration('compileTargetsExplorer');
             const showHeaders = config.get<boolean>('showHeaders', true);
             if (showHeaders) {
@@ -165,9 +179,51 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return [...this.allFilePaths];
     }
 
-    /** ファイルパスに対応する TreeItem を検索する */
+    /** ファイル/フォルダパスに対応するメインツリーの TreeItem を検索する */
     findItemByPath(filePath: string): CompileTargetItem | undefined {
-        return this.filePathToItem.get(path.normalize(filePath));
+        return this.pathToItem.get(path.normalize(filePath));
+    }
+
+    /** お気に入りにアイテムを追加する */
+    addFavorite(item: CompileTargetItem): void {
+        const normalized = path.normalize(item.filePath);
+        if (this.favorites.some(f => f.path === normalized)) { return; }
+
+        const workspaceRoot = this.getWorkspaceRoot();
+        let storedPath = normalized;
+        if (workspaceRoot) {
+            const rel = path.relative(workspaceRoot, normalized);
+            if (!rel.startsWith('..')) { storedPath = rel; }
+        }
+
+        this.favorites.push({
+            path: storedPath,
+            isFile: item.isFile,
+            label: item.label,
+        });
+        void this.saveFavorites();
+        if (workspaceRoot) { this.rebuildFavoritesSection(workspaceRoot); }
+        this._onDidChangeTreeData.fire(undefined);
+    }
+
+    /** お気に入りからアイテムを削除する */
+    removeFavorite(filePath: string): void {
+        const normalized = path.normalize(filePath);
+        const workspaceRoot = this.getWorkspaceRoot();
+
+        const idx = this.favorites.findIndex(f => {
+            const abs = workspaceRoot && !path.isAbsolute(f.path)
+                ? path.normalize(path.resolve(workspaceRoot, f.path))
+                : path.normalize(f.path);
+            return abs === normalized;
+        });
+
+        if (idx !== -1) {
+            this.favorites.splice(idx, 1);
+            void this.saveFavorites();
+            if (workspaceRoot) { this.rebuildFavoritesSection(workspaceRoot); }
+            this._onDidChangeTreeData.fire(undefined);
+        }
     }
 
     getTreeItem(element: CompileTargetItem): vscode.TreeItem {
@@ -175,12 +231,21 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
     }
 
     getParent(element: CompileTargetItem): CompileTargetItem | undefined {
+        if (element.contextValue === 'favorite') {
+            return this.favoritesRootNode;
+        }
         return this.parentMap.get(element);
     }
 
     getChildren(element?: CompileTargetItem): CompileTargetItem[] {
         if (!element) {
+            if (this.favoritesRootNode) {
+                return [this.favoritesRootNode, ...this.rootNodes];
+            }
             return this.rootNodes;
+        }
+        if (element === this.favoritesRootNode) {
+            return element.children ? Array.from(element.children.values()) : [];
         }
         if (element.children) {
             return Array.from(element.children.values()).sort((a, b) => {
@@ -195,16 +260,12 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
 
     // --- private ---
 
-    /** 起動時の初期化: キャッシュから即座に表示し、その後フルリフレッシュ */
     private async initAsync(): Promise<void> {
         const workspaceRoot = this.getWorkspaceRoot();
-        const hasCachedView = await this.restoreFromCache(workspaceRoot);
-        // キャッシュ表示済みでも最新状態に同期するためリフレッシュ
-        // ただしキャッシュがあればユーザーは既にツリーを見ている
+        await this.restoreFromCache(workspaceRoot);
         await this.refresh();
     }
 
-    /** キャッシュからツリーを復元。復元できたら true */
     private async restoreFromCache(workspaceRoot: string | undefined): Promise<boolean> {
         if (!workspaceRoot) { return false; }
         const cached = await this.loadCachedPaths();
@@ -216,7 +277,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return true;
     }
 
-    /** 収集済みパス (this.allFilePaths) からツリーを再構築して TreeView を更新 */
     private rebuildTree(workspaceRoot: string): void {
         const config = vscode.workspace.getConfiguration('compileTargetsExplorer');
         const excludePatterns = config.get<string[]>('excludePatterns', []);
@@ -272,20 +332,72 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             }
             return a.label.localeCompare(b.label);
         });
+        this.rebuildFavoritesSection(workspaceRoot);
         this.buildLookupMaps();
         this._onDidChangeTreeData.fire(undefined);
     }
 
-    /** ツリー構造から filePathToItem / parentMap を構築する */
+    /** お気に入りセクションのノードを再構築する */
+    private rebuildFavoritesSection(workspaceRoot: string): void {
+        if (this.favorites.length === 0) {
+            this.favoritesRootNode = undefined;
+            return;
+        }
+
+        const root = new CompileTargetItem(
+            vscode.l10n.t('Favorites'),
+            '',
+            false,
+            'favoritesRoot',
+        );
+        root.iconPath = new vscode.ThemeIcon('star-full');
+        root.collapsibleState = vscode.TreeItemCollapsibleState.Expanded;
+        root.children = new Map();
+
+        for (const entry of this.favorites) {
+            const absPath = path.isAbsolute(entry.path)
+                ? entry.path
+                : path.normalize(path.resolve(workspaceRoot, entry.path));
+
+            const item = new CompileTargetItem(entry.label, absPath, entry.isFile, 'favorite');
+            item.iconPath = new vscode.ThemeIcon('star-full');
+
+            // ファイルの場合: クリックでファイルを開く（コンストラクタで設定済み）
+            // フォルダの場合: クリックでメインツリーの該当フォルダに移動
+            if (!entry.isFile) {
+                item.collapsibleState = vscode.TreeItemCollapsibleState.None;
+                item.command = {
+                    command: 'compileTargetsExplorer.revealInTree',
+                    title: 'Reveal in Tree',
+                    arguments: [absPath],
+                };
+            }
+
+            // 説明としてディレクトリ（ファイル）またはパス全体（フォルダ）を表示
+            const rel = path.relative(workspaceRoot, absPath);
+            if (!rel.startsWith('..')) {
+                if (entry.isFile) {
+                    const dir = path.dirname(rel);
+                    item.description = dir === '.' ? '' : dir.replace(/\\/g, '/');
+                } else {
+                    item.description = rel.replace(/\\/g, '/');
+                }
+            }
+
+            root.children.set(absPath, item);
+        }
+
+        this.favoritesRootNode = root;
+    }
+
+    /** ツリー構造から pathToItem / parentMap を構築する */
     private buildLookupMaps(): void {
-        this.filePathToItem.clear();
+        this.pathToItem.clear();
         this.parentMap.clear();
         const walk = (nodes: CompileTargetItem[], parent: CompileTargetItem | undefined) => {
             for (const node of nodes) {
                 this.parentMap.set(node, parent);
-                if (node.isFile) {
-                    this.filePathToItem.set(path.normalize(node.filePath), node);
-                }
+                this.pathToItem.set(path.normalize(node.filePath), node);
                 if (node.children) {
                     walk(Array.from(node.children.values()), node);
                 }
@@ -294,14 +406,12 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         walk(this.rootNodes, undefined);
     }
 
-    /** バックグラウンドで #include を解決してツリーを段階的に更新 */
     private async resolveIncludesBackground(
         gen: number,
         sourceEntries: { entry: CompileCommandEntry; absPath: string }[],
         sourcePaths: Set<string>,
         workspaceRoot: string,
     ): Promise<void> {
-        // エントリごとのインクルードパスを事前計算（重複排除）
         const entryIncludeDirs = new Map<string, string[]>();
         for (const { entry, absPath } of sourceEntries) {
             if (!sourcePaths.has(absPath)) { continue; }
@@ -311,9 +421,7 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             entryIncludeDirs.set(absPath, [sourceDir, ...includeDirs]);
         }
 
-        // include解決で発見されたヘッダーを別Setで追跡
         const resolvedHeaders = new Set<string>();
-
         let newFilesCount = 0;
         const UPDATE_THRESHOLD = 50;
 
@@ -325,7 +433,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
 
             const added = resolvedHeaders.size - before;
             if (added > 0) {
-                // 新しいヘッダーを allFilePaths に追加
                 for (const h of resolvedHeaders) {
                     this.allFilePaths.add(h);
                 }
@@ -340,8 +447,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
 
         if (gen !== this.generation) { return; }
 
-        // 完了: allFilePaths を正確な sourcePaths ∪ resolvedHeaders に置き換え
-        // （キャッシュ由来の古いエントリがあれば除去される）
         const finalPaths = new Set(sourcePaths);
         for (const h of resolvedHeaders) {
             finalPaths.add(h);
@@ -352,13 +457,38 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             this.rebuildTree(workspaceRoot);
         }
 
-        // 完了後にキャッシュを永続化
         if (gen === this.generation) {
             void this.persistPaths(workspaceRoot);
         }
     }
 
-    // --- 永続化 ---
+    // --- お気に入り永続化 ---
+
+    private loadFavorites(): void {
+        const workspaceRoot = this.getWorkspaceRoot();
+        const stored = this.context.workspaceState.get<unknown[]>('compileTargetsExplorer.favorites', []);
+
+        this.favorites = stored.map(item => {
+            // 旧形式（string）との後方互換
+            if (typeof item === 'string') {
+                const absPath = workspaceRoot && !path.isAbsolute(item)
+                    ? path.normalize(path.resolve(workspaceRoot, item))
+                    : path.normalize(item);
+                return {
+                    path: item,
+                    isFile: true,
+                    label: path.basename(absPath),
+                };
+            }
+            return item as FavoriteEntry;
+        });
+    }
+
+    private async saveFavorites(): Promise<void> {
+        await this.context.workspaceState.update('compileTargetsExplorer.favorites', this.favorites);
+    }
+
+    // --- ファイルリスト永続化 ---
 
     private get cacheFilePath(): string | undefined {
         if (!this.storagePath) { return undefined; }
@@ -401,9 +531,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         }
     }
 
-    /**
-     * 複数パスの存在チェックを並列実行してキャッシュに格納
-     */
     private async batchCheckExists(paths: string[]): Promise<void> {
         const unchecked = paths.filter(p => !this.existsCache.has(p));
         if (unchecked.length === 0) { return; }
@@ -420,9 +547,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         }
     }
 
-    /**
-     * キャッシュ付きのファイル存在チェック
-     */
     private async fileExists(filePath: string): Promise<boolean> {
         const cached = this.existsCache.get(filePath);
         if (cached !== undefined) {
@@ -433,10 +557,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return exists;
     }
 
-    /**
-     * フォルダが単一のサブフォルダのみを含む場合、
-     * "src\cpp" のように結合して1ノードにまとめる（VS Code のコンパクトフォルダ表示）
-     */
     private compactFolders(nodeMap: Map<string, CompileTargetItem>): CompileTargetItem[] {
         const result: CompileTargetItem[] = [];
         for (const node of nodeMap.values()) {
@@ -469,16 +589,12 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return node;
     }
 
-    /**
-     * ソースファイルの #include を再帰的に辿り、解決されたヘッダーファイルを resolved に追加する
-     */
     private async resolveIncludes(
         filePath: string,
         searchDirs: string[],
         workspaceRoot: string,
         resolved: Set<string>,
     ): Promise<void> {
-        // 既にこのファイルの #include を解析済みならスキップ
         if (this.includesParsedCache.has(filePath)) {
             return;
         }
@@ -495,7 +611,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             return;
         }
 
-        // #include "..." と #include <...> の両方を抽出
         const includeRegex = /^\s*#\s*include\s*[<"]([^>"]+)[>"]/gm;
         let match: RegExpExecArray | null;
 
@@ -508,12 +623,10 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
                 continue;
             }
 
-            // 既に解決済みならスキップ
             if (resolved.has(resolvedPath)) {
                 continue;
             }
 
-            // ワークスペース外のヘッダーはスキップ
             const rel = path.relative(workspaceRoot, resolvedPath);
             if (rel.startsWith('..') || path.isAbsolute(rel)) {
                 continue;
@@ -523,15 +636,11 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             toResolve.push(resolvedPath);
         }
 
-        // 再帰的にヘッダー内の #include も辿る
         for (const headerPath of toResolve) {
             await this.resolveIncludes(headerPath, searchDirs, workspaceRoot, resolved);
         }
     }
 
-    /**
-     * #include のファイル名をインクルードパスから解決する（キャッシュ付き）
-     */
     private async resolveIncludePath(
         includeName: string,
         sourceFile: string,
@@ -544,14 +653,12 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             return cached;
         }
 
-        // ソースファイルのディレクトリから探す（#include "..." の振る舞い）
         const fromSource = path.normalize(path.resolve(sourceDir, includeName));
         if (await this.fileExists(fromSource)) {
             this.includeResolveCache.set(cacheKey, fromSource);
             return fromSource;
         }
 
-        // -I パスを順に探す
         for (const dir of searchDirs) {
             const candidate = path.normalize(path.resolve(dir, includeName));
             if (await this.fileExists(candidate)) {
@@ -564,9 +671,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return null;
     }
 
-    /**
-     * 1つのエントリから -I / -isystem のインクルードパスを抽出する
-     */
     private extractIncludePaths(entry: CompileCommandEntry): string[] {
         const paths: string[] = [];
 
@@ -607,17 +711,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         });
     }
 
-    /**
-     * compile_commands.json のパスを優先順位に従って解決し、読み込む。
-     *
-     * 解決順序:
-     * 1. clangd.arguments の --compile-commands-dir
-     * 2. .clangd の CompileFlags.CompilationDatabase
-     * 3. cmake.buildDirectory（変数展開あり）
-     * 4. CMakePresets.json のアクティブプリセットの binaryDir
-     * 5. ${workspaceFolder}/build
-     * 6. ${workspaceFolder}（ルート直下）
-     */
     private async loadCompileCommands(): Promise<CompileCommandEntry[] | undefined> {
         const workspaceRoot = this.getWorkspaceRoot();
         if (!workspaceRoot) {
@@ -646,9 +739,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return undefined;
     }
 
-    /**
-     * compile_commands.json の候補パスを優先順位順に返す（重複除去済み）
-     */
     private async resolveCompileCommandsCandidates(workspaceRoot: string): Promise<string[]> {
         const seen = new Set<string>();
         const candidates: string[] = [];
@@ -661,32 +751,24 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
             }
         };
 
-        // 1. clangd.arguments の --compile-commands-dir
         const clangdDir = this.resolveFromClangdArguments(workspaceRoot);
         if (clangdDir) { add(clangdDir); }
 
-        // 2. .clangd の CompileFlags.CompilationDatabase
         const dotClangdDir = await this.resolveFromDotClangd(workspaceRoot);
         if (dotClangdDir) { add(dotClangdDir); }
 
-        // 3. cmake.buildDirectory
         const cmakeDir = this.resolveFromCmakeBuildDirectory(workspaceRoot);
         if (cmakeDir) { add(cmakeDir); }
 
-        // 4. CMakePresets.json のアクティブプリセットの binaryDir
         const presetDir = await this.resolveFromCMakePresets(workspaceRoot);
         if (presetDir) { add(presetDir); }
 
-        // 5. ${workspaceFolder}/build
         add(path.join(workspaceRoot, 'build'));
-
-        // 6. ${workspaceFolder}
         add(workspaceRoot);
 
         return candidates;
     }
 
-    /** clangd.arguments から --compile-commands-dir を抽出 */
     private resolveFromClangdArguments(workspaceRoot: string): string | undefined {
         const args = vscode.workspace.getConfiguration('clangd').get<string[]>('arguments', []);
         for (let i = 0; i < args.length; i++) {
@@ -702,13 +784,10 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return undefined;
     }
 
-    /** .clangd ファイルから CompileFlags.CompilationDatabase を抽出 */
     private async resolveFromDotClangd(workspaceRoot: string): Promise<string | undefined> {
         const dotClangdPath = path.join(workspaceRoot, '.clangd');
         try {
             const content = await fs.readFile(dotClangdPath, 'utf-8');
-            // CompilationDatabase: <path> を正規表現で抽出
-            // 複数ドキュメント（---区切り）にも対応
             const match = /^\s*CompilationDatabase\s*:\s*(.+)$/m.exec(content);
             if (match) {
                 const dir = match[1].trim();
@@ -724,7 +803,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return undefined;
     }
 
-    /** cmake.buildDirectory 設定からビルドディレクトリを取得 */
     private resolveFromCmakeBuildDirectory(workspaceRoot: string): string | undefined {
         const cmakeConfig = vscode.workspace.getConfiguration('cmake');
         const buildDir = cmakeConfig.get<string>('buildDirectory');
@@ -737,9 +815,7 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return path.resolve(workspaceRoot, expanded);
     }
 
-    /** CMakePresets.json / CMakeUserPresets.json からアクティブプリセットの binaryDir を取得 */
     private async resolveFromCMakePresets(workspaceRoot: string): Promise<string | undefined> {
-        // アクティブなプリセット名を CMake Tools の設定から取得
         const cmakeConfig = vscode.workspace.getConfiguration('cmake');
         const activePresetName = cmakeConfig.get<string>('configurePreset');
 
@@ -762,12 +838,10 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
                     continue;
                 }
 
-                // アクティブプリセット名が設定されていればそれを探す
                 let preset = activePresetName
                     ? data.configurePresets.find(p => p.name === activePresetName)
                     : undefined;
 
-                // 見つからなければ最初のプリセットを使用
                 if (!preset) {
                     preset = data.configurePresets[0];
                 }
@@ -786,10 +860,6 @@ export class CompileTargetsProvider implements vscode.TreeDataProvider<CompileTa
         return undefined;
     }
 
-    /**
-     * CMake / VS Code スタイルの変数を展開する。
-     * 対応: ${workspaceFolder}, ${sourceDir}, ${presetName}, ${workspaceRoot}
-     */
     private expandVariables(value: string, workspaceRoot: string, presetName?: string): string {
         let result = value;
         result = result.replace(/\$\{workspaceFolder\}/g, workspaceRoot);

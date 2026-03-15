@@ -14,5 +14,7 @@
   "command.revealInOS.title": "Reveal in File Explorer",
   "command.openInTerminal.title": "Open in Integrated Terminal",
   "command.findInFolder.title": "Find in Folder",
+  "command.addToFavorites.title": "Add to Favorites",
+  "command.removeFromFavorites.title": "Remove from Favorites",
   "command.category": "Compile Targets Explorer"
 }

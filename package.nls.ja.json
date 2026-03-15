@@ -14,5 +14,7 @@
   "command.revealInOS.title": "エクスプローラーで表示",
   "command.openInTerminal.title": "統合ターミナルで開く",
   "command.findInFolder.title": "フォルダー内を検索",
+  "command.addToFavorites.title": "お気に入りに追加",
+  "command.removeFromFavorites.title": "お気に入りから削除",
   "command.category": "Compile Targets Explorer"
 }
